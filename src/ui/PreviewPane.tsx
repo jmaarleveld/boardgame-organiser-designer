@@ -1,0 +1,87 @@
+import { useEffect, useState } from 'react';
+import type { MeshData } from '../geometry/types';
+import { useServices } from '../integration';
+import { useStore } from '../state/store';
+import { saveBlob, safeFileName } from './download';
+
+/** 3D preview of the selected item (requires exporter + Preview3D services). */
+export function PreviewPane() {
+  const { exporter, Preview3D } = useServices();
+  const project = useStore((s) => s.project);
+  const selectedId = useStore((s) => s.selectedId);
+  const [result, setResult] = useState<{ key: string; itemId: string; mesh: MeshData | null; error: string | null } | null>(null);
+
+  const item = project.items.find((i) => i.id === selectedId);
+  // Only geometry-relevant inputs should trigger a rebuild (not x/y/label).
+  const key = item
+    ? JSON.stringify([item.id, item.type, item.params, item.wall, item.floor, project.settings.defaults])
+    : '';
+  const enabled = !!(exporter && Preview3D && selectedId && key);
+
+  useEffect(() => {
+    if (!exporter || !Preview3D || !selectedId || !key) return;
+    let cancelled = false;
+    const t = setTimeout(() => {
+      exporter
+        .previewMesh(useStore.getState().project, selectedId)
+        .then((mesh) => {
+          if (!cancelled) setResult({ key, itemId: selectedId, mesh, error: null });
+        })
+        .catch((e: unknown) => {
+          if (!cancelled) setResult({ key, itemId: selectedId, mesh: null, error: e instanceof Error ? e.message : String(e) });
+        });
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [exporter, Preview3D, selectedId, key]);
+
+  if (!Preview3D || !exporter) {
+    return <div className="preview-placeholder" title="3D preview service not available">3D preview unavailable</div>;
+  }
+  const current = enabled && result?.key === key ? result : null;
+  // Keep showing the previous mesh of the same item while rebuilding.
+  const sameItem = result && item && result.itemId === item.id;
+  const mesh = current?.mesh ?? (sameItem ? result.mesh : null);
+  return (
+    <div className="preview">
+      <Preview3D mesh={mesh} loading={enabled && !current} className="preview3d" />
+      {current?.error && <p className="error-text">Preview failed: {current.error}</p>}
+    </div>
+  );
+}
+
+/** Export buttons for the selected item. */
+export function ItemExportButtons() {
+  const { exporter } = useServices();
+  const selectedId = useStore((s) => s.selectedId);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const run = async () => {
+    if (!exporter || !selectedId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const entry = await exporter.exportItem(useStore.getState().project, selectedId);
+      saveBlob(new Blob([entry.stl], { type: 'model/stl' }), entry.fileName || `${safeFileName('item')}.stl`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="row">
+      <button
+        type="button"
+        disabled={!exporter || !selectedId || busy}
+        title={exporter ? 'Download this box as STL' : 'Exporter not available'}
+        onClick={run}
+      >
+        {busy ? 'Exporting…' : 'Export STL'}
+      </button>
+      {error && <span className="error-text">{error}</span>}
+    </div>
+  );
+}
