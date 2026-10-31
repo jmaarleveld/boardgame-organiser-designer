@@ -6,7 +6,7 @@ import { createPersistence } from './persistence';
 import { createExporter } from './exporter';
 import { clearRegistry, registerBoxType } from '../boxes/registry';
 import { createEmptyProject, type PlacedItem, type Project } from '../model/types';
-import type { GeometryKernel, Solid } from '../geometry/types';
+import type { GeometryKernel } from '../geometry/types';
 
 const SEARCH = `<?xml version="1.0" encoding="utf-8"?><items total="2" termsofuse="x">
 <item type="boardgame" id="13"><name type="primary" value="CATAN &amp; Co"/><yearpublished value="1995" /></item>
@@ -96,6 +96,7 @@ describe('exporter', () => {
   let stlCalls = 0;
   const kernel = {
     toSTL: () => { const b = new ArrayBuffer(8); new DataView(b).setUint32(0, ++stlCalls); return b; },
+    box: () => ({ __brand: 'Solid' }),
     toMesh: () => ({ positions: new Float32Array(3), indices: new Uint32Array(0) }),
   } as unknown as GeometryKernel;
   const exporter = createExporter(async () => kernel);
@@ -106,7 +107,7 @@ describe('exporter', () => {
     registerBoxType({
       id: 'fake', name: 'Fake', description: '', params: [{ key: 'w', label: 'W', kind: 'number', default: 10 }],
       footprint: (r) => ({ width: Number(r.params.w) + 2 * r.wall, depth: 20, height: 5 }),
-      build: () => ({ __brand: 'Solid' }) as Solid,
+      build: (_r, k) => k.box(1, 1, 1),
       draw: () => [],
     });
   });
@@ -127,6 +128,8 @@ describe('exporter', () => {
     expect(e.fileName).toBe('Cards_Tray.stl');
     expect(e.count).toBe(1);
     expect(e.itemIds).toEqual(['a']);
+    expect(e.scad).toContain('cube([1, 1, 1]);');
+    expect(e.scad).toContain('w = 10');
   });
 
   it('exportAll dedupes, names, reports progress and writes manifest', async () => {
@@ -137,7 +140,7 @@ describe('exporter', () => {
     expect(prog[prog.length - 1]).toBe(2);
     const zip = await JSZip.loadAsync(await blob.arrayBuffer());
     const names = Object.keys(zip.files).sort();
-    expect(names).toEqual(['01_Cards_Tray_x2.stl', '02_Other_x1.stl', 'manifest.txt']);
+    expect(names).toEqual(['01_Cards_Tray_x2.scad', '01_Cards_Tray_x2.stl', '02_Other_x1.scad', '02_Other_x1.stl', 'manifest.txt']);
     const m = await zip.file('manifest.txt')!.async('string');
     expect(m).toContain('Project: My Game');
     expect(m).toContain('Tolerance: x 2 mm, y 2 mm');

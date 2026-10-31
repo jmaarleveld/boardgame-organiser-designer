@@ -47,6 +47,8 @@ export interface ExportEntry {
   /** How many copies to print. */
   count: number;
   stl: ArrayBuffer;
+  /** OpenSCAD source for the same geometry (parameters baked in as literals). */
+  scad: string;
 }
 
 export interface ExportProgress {

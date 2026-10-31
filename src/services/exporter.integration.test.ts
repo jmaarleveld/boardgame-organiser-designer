@@ -45,10 +45,28 @@ describe('exporter with real kernel', () => {
     for (const name of stls) {
       checkBinaryStl(await zip.file(name)!.async('uint8array'));
     }
+    const scads = names.filter((n) => n.endsWith('.scad'));
+    expect(scads.sort()).toEqual(stls.map((n) => n.replace(/\.stl$/, '.scad')).sort());
+    for (const name of scads) {
+      const src = await zip.file(name)!.async('string');
+      expect(src).toContain('// Parameters (informational; geometry below uses literal values)');
+      expect(src).toContain('$fn = 48;');
+    }
     const manifest = await zip.file('manifest.txt')!.async('string');
     expect(manifest).toContain('Sample insert');
     for (const item of project.items) expect(manifest).toContain(item.label);
     expect(progress.at(-1)).toBe(stls.length);
+  }, 60_000);
+
+  it('every sample entry has scad; trays use difference(), spacer uses cube(', async () => {
+    const project = sampleProject();
+    for (const it of project.items) {
+      const e = await exporter.exportItem(project, it.id);
+      expect(e.scad.length).toBeGreaterThan(0);
+      if (it.type === 'spacer') expect(e.scad).toContain('cube(');
+      else if (/tray/.test(it.type)) expect(e.scad).toContain('difference()');
+    }
+    expect(project.items.some((i) => i.type === 'spacer')).toBe(true);
   }, 60_000);
 
   it('dedupes identical items and builds single items / preview meshes', async () => {
@@ -62,6 +80,7 @@ describe('exporter with real kernel', () => {
 
     const entry = await exporter.exportItem(project, 'sample-divided');
     checkBinaryStl(entry.stl);
+    expect(entry.scad).toContain('difference()');
     const mesh = await exporter.previewMesh(project, 'sample-divided');
     expect(mesh.positions.length).toBeGreaterThan(0);
     expect(mesh.indices.length % 3).toBe(0);

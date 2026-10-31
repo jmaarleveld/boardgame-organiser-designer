@@ -50,7 +50,14 @@ Other scripts: `npm run lint` (oxlint), `npm run typecheck`, `npm run preview`
 8. **Export.** "Export all STL" builds every item and downloads a zip containing one
    binary STL per unique geometry plus a `manifest.txt`. Items that are identical
    (same type, parameters, wall and floor) share one file, and the manifest gives the
-   count to print. The inspector also offers per-item export and a 3D preview.
+   count to print. The inspector also offers per-item export (STL or `.scad`) and a 3D
+   preview.
+
+   Every `.stl` in the zip has a matching `.scad` file: OpenSCAD source describing the
+   same geometry, for tweaking by hand. Parameters are baked in as literal numbers;
+   the header comment lists them (with wall, floor and outer size) for reference only,
+   so editing those lines changes nothing. `$fn` at the top controls how smooth notch
+   and other round cut-outs are.
 9. **Save and load.** Save writes the whole project as JSON; Open loads a JSON file
    (it is validated before it is applied). The current project is also autosaved to
    the browser's `localStorage` and restored on the next visit. Autosave is per

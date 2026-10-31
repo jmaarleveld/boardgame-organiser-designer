@@ -61,13 +61,15 @@ export function ItemExportButtons() {
   const kernelError = useStore((s) => s.kernelError);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const run = async () => {
+  const run = async (kind: 'stl' | 'scad') => {
     if (!exporter || !selectedId) return;
     setBusy(true);
     setError(null);
     try {
       const entry = await exporter.exportItem(useStore.getState().project, selectedId);
-      saveBlob(new Blob([entry.stl], { type: 'model/stl' }), entry.fileName || `${safeFileName('item')}.stl`);
+      const stlName = entry.fileName || `${safeFileName('item')}.stl`;
+      if (kind === 'stl') saveBlob(new Blob([entry.stl], { type: 'model/stl' }), stlName);
+      else saveBlob(new Blob([entry.scad], { type: 'text/plain' }), stlName.replace(/\.stl$/, '.scad'));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -80,9 +82,17 @@ export function ItemExportButtons() {
         type="button"
         disabled={!exporter || !kernelReady || !selectedId || busy}
         title={!exporter ? 'Exporter not available' : !kernelReady ? 'Geometry engine not ready' : 'Download this box as STL'}
-        onClick={run}
+        onClick={() => void run('stl')}
       >
         {busy ? 'Exporting…' : exporter && !kernelReady && !kernelError ? 'Export STL (loading geometry…)' : 'Export STL'}
+      </button>
+      <button
+        type="button"
+        disabled={!exporter || !kernelReady || !selectedId || busy}
+        title={!exporter ? 'Exporter not available' : !kernelReady ? 'Geometry engine not ready' : 'Download this box as OpenSCAD source'}
+        onClick={() => void run('scad')}
+      >
+        Export .scad
       </button>
       {error && <span className="error-text">{error}</span>}
     </div>
