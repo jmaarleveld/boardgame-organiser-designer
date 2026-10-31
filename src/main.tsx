@@ -2,28 +2,41 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App.tsx';
+import type { AppServices } from './integration';
+import { registerAllBoxTypes } from './boxes';
+import { createKernel } from './geometry/kernel';
+import { createPersistence } from './services/persistence';
+import { createExporter } from './services/exporter';
+import { createBggClient } from './services/bgg';
+import Preview3D from './preview/Preview3D';
+import { useStore } from './state/store';
 
-/**
- * Register the box types if src/boxes/index.ts exists. import.meta.glob keeps
- * this working (and building) while that module is still absent; the
- * integration step can replace it with a plain `import { registerAllBoxTypes } from './boxes'`.
- */
-async function registerBoxes(): Promise<void> {
-  const mods = import.meta.glob<{ registerAllBoxTypes?: () => void }>('./boxes/index.ts');
-  const load = mods['./boxes/index.ts'];
-  if (!load) return;
-  try {
-    const mod = await load();
-    mod.registerAllBoxTypes?.();
-  } catch (e) {
-    console.error('Failed to register box types', e);
-  }
+registerAllBoxTypes();
+
+const services: AppServices = {
+  persistence: createPersistence(),
+  exporter: createExporter(createKernel),
+  bgg: createBggClient(),
+  Preview3D,
+};
+
+/** Load the manifold WASM in the background; the UI is usable meanwhile. */
+function loadKernel(): void {
+  const { setKernelReady, setKernelError } = useStore.getState();
+  setKernelError(null);
+  createKernel().then(
+    () => setKernelReady(true),
+    (e: unknown) => {
+      console.error('Failed to load the geometry kernel', e);
+      setKernelError(e instanceof Error ? e.message : String(e));
+    },
+  );
 }
 
-void registerBoxes().then(() => {
-  createRoot(document.getElementById('root')!).render(
-    <StrictMode>
-      <App services={{}} />
-    </StrictMode>,
-  );
-});
+loadKernel();
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App services={services} onRetryKernel={loadKernel} />
+  </StrictMode>,
+);

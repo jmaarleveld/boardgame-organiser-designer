@@ -20,12 +20,15 @@ export interface AppState {
   project: Project;
   selectedId: string | null;
   kernelReady: boolean;
+  /** Non-null when loading the geometry kernel failed. */
+  kernelError: string | null;
   past: Project[];
   future: Project[];
   /** Snapshot taken by beginDrag; non-null while a drag is in progress. */
   dragBase: Project | null;
 
   setKernelReady(ready: boolean): void;
+  setKernelError(error: string | null): void;
   setSettings(partial: DeepPartial<ProjectSettings>): void;
   setBoxSize(size: { width?: number; depth?: number; height?: number }): void;
   /** Adds an item; `at` is the desired centre of its footprint. Returns the new id. */
@@ -136,11 +139,13 @@ export const useStore = create<AppState>()((set, get) => {
     project: createEmptyProject(),
     selectedId: null,
     kernelReady: false,
+    kernelError: null,
     past: [],
     future: [],
     dragBase: null,
 
-    setKernelReady: (ready) => set({ kernelReady: ready }),
+    setKernelReady: (ready) => set({ kernelReady: ready, ...(ready ? { kernelError: null } : {}) }),
+    setKernelError: (error) => set({ kernelError: error, ...(error ? { kernelReady: false } : {}) }),
 
     setSettings: (partial) =>
       commit((p) => {

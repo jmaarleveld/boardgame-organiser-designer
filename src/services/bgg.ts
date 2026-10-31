@@ -76,6 +76,8 @@ export function createBggClient(baseUrl = '/api/bgg', opts: BggOptions = {}): Bg
         await abortableDelay(retryDelay, signal);
         continue;
       }
+      if (res.status === 401 || res.status === 403)
+        throw new Error('BoardGameGeek rejected the request (HTTP ' + res.status + '): its XML API now requires an application token. Start the dev server with BGG_TOKEN=<token> set, or enter the size manually.');
       if (!res.ok) throw new Error(`BoardGameGeek request failed (HTTP ${res.status}).`);
       return res.text();
     }

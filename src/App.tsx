@@ -9,13 +9,53 @@ import { TopView } from './ui/TopView';
 import { Inspector } from './ui/Inspector';
 import { ValidationPanel } from './ui/ValidationPanel';
 import { StatusBar } from './ui/StatusBar';
-import { BggLookup } from './ui/BggLookup';
+import BggLookup from './services/BggLookup';
 import { ItemExportButtons, PreviewPane } from './ui/PreviewPane';
-import { saveBlob, safeFileName } from './ui/download';
+import { downloadBlob as saveBlob, safeFileName } from './services/download';
+import { sampleProject } from './boxes/sample';
 import './ui/app.css';
 
 export interface AppProps {
   services: AppServices;
+  /** Retry loading the geometry kernel (shown in the failure banner). */
+  onRetryKernel?: () => void;
+}
+
+/** Collapsible BGG lookup; fills the game box inner size from the picked version. */
+function BggSlot({ services }: { services: AppServices }) {
+  const [open, setOpen] = useState(false);
+  const setBoxSize = useStore((s) => s.setBoxSize);
+  if (!services.bgg) {
+    return (
+      <button type="button" disabled title="BoardGameGeek lookup is not available">
+        Fetch from BoardGameGeek
+      </button>
+    );
+  }
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)}>
+        Fetch from BoardGameGeek
+      </button>
+    );
+  }
+  return (
+    <>
+      <div className="row">
+        <span className="muted">BoardGameGeek lookup</span>
+        <button type="button" className="link" onClick={() => setOpen(false)} aria-label="Close BoardGameGeek lookup">
+          ×
+        </button>
+      </div>
+      <BggLookup
+        client={services.bgg}
+        onPick={(d) => {
+          setBoxSize({ width: d.widthMm, depth: d.depthMm, height: d.heightMm });
+          setOpen(false);
+        }}
+      />
+    </>
+  );
 }
 
 function isTyping(el: EventTarget | null): boolean {
@@ -24,9 +64,11 @@ function isTyping(el: EventTarget | null): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
 }
 
-export default function App({ services }: AppProps) {
+export default function App({ services, onRetryKernel }: AppProps) {
   const { persistence, exporter } = services;
   const project = useStore((s) => s.project);
+  const kernelReady = useStore((s) => s.kernelReady);
+  const kernelError = useStore((s) => s.kernelError);
   const canUndo = useStore((s) => s.past.length > 0);
   const canRedo = useStore((s) => s.future.length > 0);
   const summary = useMemo(() => layoutSummary(project.items, project.settings), [project]);
@@ -117,6 +159,12 @@ export default function App({ services }: AppProps) {
     useStore.getState().newProject();
   };
 
+  const onLoadSample = () => {
+    if (project.items.length && !window.confirm('Replace the current project with the sample? You can undo with Ctrl+Z.')) return;
+    useStore.getState().loadProject(sampleProject());
+    setNotice({ kind: 'info', text: 'Loaded the sample project' });
+  };
+
   const onOpenFile = async (file: File) => {
     if (!persistence) return;
     try {
@@ -161,6 +209,9 @@ export default function App({ services }: AppProps) {
           <button type="button" onClick={onNew}>
             New
           </button>
+          <button type="button" onClick={onLoadSample} title="Load a demo project with one of each box type">
+            Load sample
+          </button>
           <button
             type="button"
             disabled={!persistence}
@@ -191,11 +242,23 @@ export default function App({ services }: AppProps) {
           <span className="sep" />
           <button
             type="button"
-            disabled={!exporter || !project.items.length || !!exporting}
-            title={exporter ? 'Export every box as STL (zip)' : missing('Exporter')}
+            disabled={!exporter || !kernelReady || !project.items.length || !!exporting}
+            title={
+              !exporter
+                ? missing('Exporter')
+                : kernelError
+                  ? 'Geometry engine failed to load'
+                  : !kernelReady
+                    ? 'Loading the geometry engine…'
+                    : 'Export every box as STL (zip)'
+            }
             onClick={() => void onExportAll()}
           >
-            {exporting ? `Exporting ${exporting}` : 'Export all STL'}
+            {exporting
+              ? `Exporting ${exporting}`
+              : exporter && !kernelReady && !kernelError
+                ? 'Export all STL (loading geometry…)'
+                : 'Export all STL'}
           </button>
           <span className="sep" />
           <button type="button" disabled={!canUndo} onClick={s.undo} title="Undo (Ctrl+Z)">
@@ -212,10 +275,22 @@ export default function App({ services }: AppProps) {
               </button>
             </span>
           )}
+          {kernelError && (
+            <div className="kernel-banner" role="alert">
+              <span>
+                Geometry engine failed to load — 3D preview and STL export are unavailable. ({kernelError})
+              </span>
+              {onRetryKernel && (
+                <button type="button" onClick={onRetryKernel}>
+                  Retry
+                </button>
+              )}
+            </div>
+          )}
         </header>
 
         <aside className="left">
-          <SettingsPanel bggSlot={<BggLookup />} />
+          <SettingsPanel bggSlot={<BggSlot services={services} />} />
           <Palette />
         </aside>
 

@@ -10,7 +10,10 @@ export interface ParamFormProps {
 }
 
 /** Generic form for a box type's ParamSpec list. */
-export function ParamForm({ specs, values, onChange }: ParamFormProps) {
+export function ParamForm({ specs, values: given, onChange }: ParamFormProps) {
+  // visibleIf must see resolved params; re-apply spec defaults defensively in
+  // case the caller passed raw item params.
+  const values: ItemParams = { ...Object.fromEntries(specs.map((s) => [s.key, s.default])), ...given };
   const visible = specs.filter((s) => {
     try {
       return s.visibleIf ? s.visibleIf(values) : true;

@@ -2,19 +2,20 @@ import { useEffect, useState } from 'react';
 import type { MeshData } from '../geometry/types';
 import { useServices } from '../integration';
 import { useStore } from '../state/store';
-import { saveBlob, safeFileName } from './download';
+import { downloadBlob as saveBlob, safeFileName } from '../services/download';
 
 /** 3D preview of the selected item (requires exporter + Preview3D services). */
 export function PreviewPane() {
   const { exporter, Preview3D } = useServices();
   const project = useStore((s) => s.project);
   const selectedId = useStore((s) => s.selectedId);
+  const kernelReady = useStore((s) => s.kernelReady);
   const [result, setResult] = useState<{ key: string; itemId: string; mesh: MeshData | null; error: string | null } | null>(null);
 
   const item = project.items.find((i) => i.id === selectedId);
   // Only geometry-relevant inputs should trigger a rebuild (not x/y/label).
   const key = item
-    ? JSON.stringify([item.id, item.type, item.params, item.wall, item.floor, project.settings.defaults])
+    ? JSON.stringify([item.id, item.type, item.params, item.wall, item.floor, project.settings.defaults, kernelReady])
     : '';
   const enabled = !!(exporter && Preview3D && selectedId && key);
 
@@ -56,6 +57,8 @@ export function PreviewPane() {
 export function ItemExportButtons() {
   const { exporter } = useServices();
   const selectedId = useStore((s) => s.selectedId);
+  const kernelReady = useStore((s) => s.kernelReady);
+  const kernelError = useStore((s) => s.kernelError);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const run = async () => {
@@ -75,11 +78,11 @@ export function ItemExportButtons() {
     <div className="row">
       <button
         type="button"
-        disabled={!exporter || !selectedId || busy}
-        title={exporter ? 'Download this box as STL' : 'Exporter not available'}
+        disabled={!exporter || !kernelReady || !selectedId || busy}
+        title={!exporter ? 'Exporter not available' : !kernelReady ? 'Geometry engine not ready' : 'Download this box as STL'}
         onClick={run}
       >
-        {busy ? 'Exporting…' : 'Export STL'}
+        {busy ? 'Exporting…' : exporter && !kernelReady && !kernelError ? 'Export STL (loading geometry…)' : 'Export STL'}
       </button>
       {error && <span className="error-text">{error}</span>}
     </div>

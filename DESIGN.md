@@ -126,7 +126,9 @@ items vs usable area), total item count, validation summary.
 * `bgg.ts` — search BoardGameGeek and read box dimensions from the
   `thing?versions=1` endpoint (inches → mm). Optional; manual entry is primary.
   BGG reports *outer* dimensions, so the UI applies a configurable cardboard
-  deduction before filling the inner size.
+  deduction before filling the inner size. BGG's API requires a registered
+  application token; the Vite proxy forwards it from the `BGG_TOKEN` environment
+  variable as a Bearer header.
 * `persistence.ts` — autosave to `localStorage`, JSON import/export with
   validation.
 * `exporter.ts` — builds every item with the kernel, writes binary STLs, dedupes
