@@ -74,3 +74,11 @@ export interface Preview3DProps {
   loading?: boolean;
   className?: string;
 }
+
+export interface AssemblyViewProps {
+  className?: string;
+  /** Shows a "Pop out" button that calls this. */
+  onPopOut?(): void;
+  /** Shows a close button that calls this (used by the pop‑out panel). */
+  onClose?(): void;
+}

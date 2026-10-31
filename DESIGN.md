@@ -135,7 +135,16 @@ items vs usable area), total item count, validation summary.
   identical items (same type/params/wall/floor) into one file with a count, and
   packs them with a `manifest.txt` into a zip.
 * `download.ts` — trigger a browser download for a Blob.
-* `src/preview/Preview3D.tsx` — three.js viewer for a `MeshData`.
+* `src/preview/Preview3D.tsx` — three.js viewer for a `MeshData` (single item).
+* `src/preview/AssemblyView.tsx` — "Assembly" tab: the whole game box as a
+  translucent shell with every item placed from the layout. One mesh per unique
+  geometry (exporter's `geometryKey`) in a shared LRU cache; moves and rotations
+  only update transforms. Items taller than the box are tinted red, overlapping
+  or out‑of‑area items orange. Note: the scene root is mirrored in Y
+  (`scale(1,-1,1)`) so the view reads like the top view (x right, y down); this
+  mirrors chiral geometry, which is invisible for the current symmetric boxes.
+* `src/geometry/scadKernel.ts` — a second `GeometryKernel` that records calls
+  and emits OpenSCAD source; the exporter writes a `.scad` next to every `.stl`.
 
 ## 8. Module ownership (parallel implementation)
 

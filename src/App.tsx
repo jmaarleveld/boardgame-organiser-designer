@@ -10,7 +10,7 @@ import { Inspector } from './ui/Inspector';
 import { ValidationPanel } from './ui/ValidationPanel';
 import { StatusBar } from './ui/StatusBar';
 import BggLookup from './services/BggLookup';
-import { ItemExportButtons, PreviewPane } from './ui/PreviewPane';
+import { ItemExportButtons, PreviewTabs } from './ui/PreviewPane';
 import { downloadBlob as saveBlob, safeFileName } from './services/download';
 import { sampleProject } from './boxes/sample';
 import './ui/app.css';
@@ -299,7 +299,7 @@ export default function App({ services, onRetryKernel }: AppProps) {
         </main>
 
         <aside className="right">
-          <Inspector previewSlot={<PreviewPane />} exportSlot={<ItemExportButtons />} />
+          <Inspector previewSlot={<PreviewTabs />} exportSlot={<ItemExportButtons />} />
           <ValidationPanel summary={summary} />
         </aside>
 

@@ -9,6 +9,7 @@ import { createPersistence } from './services/persistence';
 import { createExporter } from './services/exporter';
 import { createBggClient } from './services/bgg';
 import Preview3D from './preview/Preview3D';
+import AssemblyView from './preview/AssemblyView';
 import { useStore } from './state/store';
 
 registerAllBoxTypes();
@@ -18,6 +19,7 @@ const services: AppServices = {
   exporter: createExporter(createKernel),
   bgg: createBggClient(),
   Preview3D,
+  AssemblyView,
 };
 
 /** Load the manifold WASM in the background; the UI is usable meanwhile. */

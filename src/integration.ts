@@ -5,13 +5,15 @@
  */
 import { createContext, createElement, useContext } from 'react';
 import type { ComponentType, ReactNode } from 'react';
-import type { BggClient, Exporter, Persistence, Preview3DProps } from './services/contracts';
+import type { AssemblyViewProps, BggClient, Exporter, Persistence, Preview3DProps } from './services/contracts';
 
 export interface AppServices {
   persistence?: Persistence;
   exporter?: Exporter;
   bgg?: BggClient;
   Preview3D?: ComponentType<Preview3DProps>;
+  /** Whole-box 3D view with every placed item (reads the store itself). */
+  AssemblyView?: ComponentType<AssemblyViewProps>;
 }
 
 const ServicesContext = createContext<AppServices>({});

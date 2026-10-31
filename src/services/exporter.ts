@@ -24,8 +24,12 @@ function stableStringify(v: unknown): string {
   return JSON.stringify(v) ?? 'null';
 }
 
-/** Key identifying identical geometry: resolved type/wall/floor/params. */
-function geometryKey(project: Project, item: PlacedItem): string {
+/**
+ * Key identifying identical geometry: resolved type/wall/floor/params.
+ * Shared by the zip export (dedup) and the assembly view's mesh cache.
+ * Throws for unknown box types (via resolveItem).
+ */
+export function geometryKey(project: Project, item: PlacedItem): string {
   const r = resolveItem(item, project.settings);
   return stableStringify({ type: r.type, wall: r.wall, floor: r.floor, params: r.params });
 }

@@ -132,8 +132,14 @@ input:disabled { background: #f1f2f4; color: var(--muted); }
 .issues .error .sev { color: var(--error); font-weight: 700; }
 .issues .warning .sev { color: var(--warning); font-weight: 700; }
 
+.inspector-body { display: flex; flex-direction: column; gap: 6px; }
 .preview-slot { min-height: 0; }
 .preview, .preview3d { width: 100%; height: 220px; }
+.preview-tabs { display: flex; flex-direction: column; gap: 4px; }
+.tabs { display: flex; align-items: center; gap: 2px; border-bottom: 1px solid var(--border); }
+.tabs [role='tab'] { border: 1px solid transparent; border-bottom: none; border-radius: 4px 4px 0 0; background: none; margin-bottom: -1px; padding: 3px 10px; }
+.tabs [role='tab'].active { border-color: var(--border); background: var(--panel); font-weight: 600; border-bottom: 1px solid var(--panel); }
+.tabs .tab-hint { font-size: 11px; margin-left: 6px; }
 .preview-placeholder {
   height: 80px; display: flex; align-items: center; justify-content: center;
   color: var(--muted); border: 1px dashed var(--border); border-radius: 4px;
