@@ -8,7 +8,7 @@ import { createEmptyProject } from '../model/types';
 import { getBoxType } from '../boxes/registry';
 import { defaultParams } from '../boxes/types';
 import type { Rect } from '../model/layout';
-import { rectInside, rectsOverlap, safeItemRect, usableArea } from '../model/layout';
+import { itemEngagement, rectInside, rectsOverlap, restingElevation, safeItemRect, usableArea } from '../model/layout';
 
 export const HISTORY_LIMIT = 100;
 
@@ -40,6 +40,12 @@ export interface AppState {
   rotateItem(id: string): void;
   removeItem(id: string): void;
   duplicateItem(id: string): string | null;
+  /** Set an item's bottom elevation (mm, clamped to ≥ 0; 0 clears the field). */
+  setElevation(id: string, z: number): void;
+  /** Drop/raise an item so it rests on whatever it overlaps in XY (restingElevation). */
+  stackOnBelow(id: string): void;
+  /** Duplicate an item on top of itself (same x/y, z = top − engagement). Returns the new id. */
+  duplicateItemStacked(id: string): string | null;
   select(id: string | null): void;
   loadProject(project: Project): void;
   newProject(): void;
@@ -102,6 +108,21 @@ function nextLabel(base: string, items: PlacedItem[]): string {
   let n = items.filter((i) => i.label.startsWith(base + ' ')).length + 1;
   while (used.has(`${base} ${n}`)) n++;
   return `${base} ${n}`;
+}
+
+/** "Tokens" → "Tokens (level 2)", "Tokens (level 2)" → "Tokens (level 3)". */
+export function stackedLabel(label: string): string {
+  const m = /^(.*?)\s*\(level (\d+)\)$/.exec(label);
+  if (m) return `${m[1]} (level ${Number(m[2]) + 1})`;
+  return `${label.trim() || 'Box'} (level 2)`;
+}
+
+function withElevation(item: PlacedItem, z: number): PlacedItem {
+  const nz = Number.isFinite(z) ? Math.max(0, round(z)) : 0;
+  if ((item.z ?? 0) === nz && (nz !== 0 || item.z === undefined)) return item;
+  const next: PlacedItem = { ...item, z: nz };
+  if (nz === 0) delete next.z;
+  return next;
 }
 
 function labelBase(name: string): string {
@@ -275,6 +296,36 @@ export const useStore = create<AppState>()((set, get) => {
         x: round(pos.x),
         y: round(pos.y),
       };
+      // The free spot search works on the floor level: the copy starts there.
+      delete copy.z;
+      commit((p) => ({ ...p, items: [...p.items, copy] }));
+      set({ selectedId: copy.id });
+      return copy.id;
+    },
+
+    setElevation: (id, z) => mapItem(id, (i) => withElevation(i, z)),
+
+    stackOnBelow: (id) => {
+      const { settings, items } = get().project;
+      if (!items.some((i) => i.id === id)) return;
+      const z = restingElevation(id, items, settings);
+      mapItem(id, (i) => withElevation(i, z));
+    },
+
+    duplicateItemStacked: (id) => {
+      const { settings, items } = get().project;
+      const src = items.find((i) => i.id === id);
+      if (!src) return null;
+      const r = safeItemRect(src, settings);
+      const copy: PlacedItem = {
+        ...structuredClone(src),
+        id: newId(),
+        label: stackedLabel(src.label),
+      };
+      // The copy has the same type/params, hence the same engagement.
+      const z = Math.max(0, round(r.top - itemEngagement(copy, settings)));
+      if (z > 0) copy.z = z;
+      else delete copy.z;
       commit((p) => ({ ...p, items: [...p.items, copy] }));
       set({ selectedId: copy.id });
       return copy.id;

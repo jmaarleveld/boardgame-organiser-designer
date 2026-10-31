@@ -1,7 +1,23 @@
 import type { BoxTypeDefinition, TopViewFeature } from '../types';
 import type { ResolvedItem } from '../../model/types';
 import type { Solid } from '../../geometry/types';
-import { notchCutter, notchRect, num, openBox, requirePositive, str, validateNotch, wallPairNotches, type NotchSpec } from './common';
+import {
+  notchCutter,
+  notchRect,
+  num,
+  requirePositive,
+  stackEngagement,
+  stackedHeight,
+  stackedOpenBox,
+  stacking,
+  stackingParams,
+  stackNotches,
+  str,
+  validateNotch,
+  validateStacking,
+  wallPairNotches,
+  type NotchSpec,
+} from './common';
 
 const ORIENTATIONS = ['flat', 'upright'] as const;
 type Orientation = (typeof ORIENTATIONS)[number];
@@ -39,13 +55,13 @@ function geom(item: ResolvedItem) {
   const ih = upright ? cardH - exposed : stack;
   const nd = Math.min(Math.max(ih / 2, MIN_NOTCH_DEPTH), ih);
   const notchAxis: 'x' | 'y' = upright ? 'y' : 'x';
-  return { cardW, cardH, c, stack, orientation, upright, exposed, nw, iw, id, ih, nd, notchAxis, wall: item.wall, floor: item.floor };
+  return { cardW, cardH, c, stack, orientation, upright, exposed, nw, iw, id, ih, nd, notchAxis, wall: item.wall, floor: item.floor, stacking: stacking(item) };
 }
 
 function notches(item: ResolvedItem): NotchSpec[] {
   const g = geom(item);
   if (!(g.nw > 0)) return [];
-  return wallPairNotches(g.notchAxis, g.iw, g.id, g.ih, g.wall, g.floor, g.nw, g.nd);
+  return stackNotches(wallPairNotches(g.notchAxis, g.iw, g.id, g.ih, g.wall, g.floor, g.nw, g.nd), g.stacking);
 }
 
 export const cardTray: BoxTypeDefinition = {
@@ -111,16 +127,17 @@ export const cardTray: BoxTypeDefinition = {
       group: 'Layout',
       help: '0 = no finger notches.',
     },
+    ...stackingParams,
   ],
 
   footprint(item) {
     const g = geom(item);
-    return { width: g.iw + 2 * g.wall, depth: g.id + 2 * g.wall, height: g.ih + g.floor };
+    return { width: g.iw + 2 * g.wall, depth: g.id + 2 * g.wall, height: stackedHeight(g.ih, g.floor, g.stacking) };
   },
 
   build(item, kernel) {
     const g = geom(item);
-    const body = openBox(kernel, g.iw, g.id, g.ih, g.wall, g.floor);
+    const body = stackedOpenBox(kernel, g.iw, g.id, g.ih, g.wall, g.floor, g.stacking);
     const cutters = notches(item)
       .map((n) => notchCutter(kernel, n))
       .filter((s): s is Solid => s !== null);
@@ -154,6 +171,9 @@ export const cardTray: BoxTypeDefinition = {
       const span = g.notchAxis === 'x' ? g.iw : g.id;
       validateNotch(problems, g.nw, g.nd, span, g.ih, 'wall');
     }
+    validateStacking(problems, g.stacking, g.wall, g.floor, g.iw, g.id, g.ih);
     return problems;
   },
+
+  stackEngagement,
 };

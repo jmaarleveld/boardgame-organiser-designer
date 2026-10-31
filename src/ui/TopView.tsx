@@ -6,7 +6,7 @@ import type { TopViewFeature } from '../boxes/types';
 import { resolveItem } from '../model/resolve';
 import type { PlacedItem, ProjectSettings } from '../model/types';
 import type { ItemRect, LayoutSummary, Rect, SnapGuide } from '../model/layout';
-import { boundingBox, errorItemIds, safeItemRect, snapPosition, usableArea } from '../model/layout';
+import { boundingBox, errorItemIds, safeItemRect, snapPosition, usableArea, warningItemIds } from '../model/layout';
 import { BOX_TYPE_MIME } from './dnd';
 
 /** View = centre (mm) + scale (mm per screen px). viewBox is derived from the element size. */
@@ -45,6 +45,8 @@ const DRAG_START_PX = 3;
 const SNAP_PX = 8;
 
 const f1 = (v: number) => (Math.round(v * 10) / 10).toString();
+/** Elevation levels are grouped at 0.1 mm. */
+const levelKey = (z: number) => Math.round(z * 10) / 10;
 
 function fitView(bounds: Rect, size: Size): View {
   const w = Math.max(size.w - 2 * PAD_PX, 10);
@@ -79,6 +81,8 @@ export function TopView({ summary }: { summary: LayoutSummary }) {
   const [panning, setPanning] = useState(false);
   const [spaceDown, setSpaceDown] = useState(false);
   const [dropHover, setDropHover] = useState(false);
+  /** Level filter: hide items with z above this value; null = show all. */
+  const [maxLevel, setMaxLevel] = useState<number | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const panRef = useRef<PanState | null>(null);
 
@@ -110,6 +114,19 @@ export function TopView({ summary }: { summary: LayoutSummary }) {
   const m = view.m;
   const vb = { x: view.cx - (size.w * m) / 2, y: view.cy - (size.h * m) / 2, w: size.w * m, h: size.h * m };
   const errors = useMemo(() => errorItemIds(summary), [summary]);
+  const warnings = useMemo(() => warningItemIds(summary), [summary]);
+  /** Distinct bottom elevations, ascending (always contains 0). */
+  const levels = useMemo(() => [...new Set([0, ...rects.map((r) => levelKey(r.z))])].sort((a, b) => a - b), [rects]);
+  const visible = (idx: number) => maxLevel === null || levelKey(rects[idx].z) <= maxLevel + 1e-9;
+  /** Draw order: by elevation (higher later), stable; filtered by the level control. */
+  const drawOrder = useMemo(
+    () =>
+      items
+        .map((_, idx) => idx)
+        .filter((idx) => maxLevel === null || levelKey(rects[idx].z) <= maxLevel + 1e-9)
+        .sort((a, b) => rects[a].z - rects[b].z || a - b),
+    [items, rects, maxLevel],
+  );
 
   const toMm = useCallback((clientX: number, clientY: number) => {
     const svg = svgRef.current;
@@ -340,22 +357,26 @@ export function TopView({ summary }: { summary: LayoutSummary }) {
         {gridPath && <path className="grid" d={gridPath} />}
         <rect className="box-outline" x={0} y={0} width={settings.box.width} height={settings.box.depth} />
 
-        {items.map((item, idx) => (
-          <ItemShape
-            key={item.id}
-            item={item}
-            rect={rects[idx]}
-            settings={settings}
-            m={m}
-            selected={item.id === selectedId}
-            error={errors.has(item.id)}
-            dragging={item.id === draggingId}
-            onPointerDown={(e) => onItemPointerDown(e, item, idx)}
-            onFocus={() => select(item.id)}
-          />
-        ))}
+        {drawOrder.map((idx) => {
+          const item = items[idx];
+          return (
+            <ItemShape
+              key={item.id}
+              item={item}
+              rect={rects[idx]}
+              settings={settings}
+              m={m}
+              selected={item.id === selectedId}
+              error={errors.has(item.id)}
+              warning={warnings.has(item.id)}
+              dragging={item.id === draggingId}
+              onPointerDown={(e) => onItemPointerDown(e, item, idx)}
+              onFocus={() => select(item.id)}
+            />
+          );
+        })}
 
-        {selIdx >= 0 && (
+        {selIdx >= 0 && visible(selIdx) && (
           <rect
             className="selection"
             x={rects[selIdx].x}
@@ -397,6 +418,23 @@ export function TopView({ summary }: { summary: LayoutSummary }) {
       )}
 
       <div className="view-controls">
+        {levels.length > 1 && (
+          <label className="level-filter" title="Hide items stacked above this elevation so lower levels can be edited">
+            <span>Show up to</span>
+            <select
+              aria-label="Level filter"
+              value={maxLevel === null ? 'all' : String(maxLevel)}
+              onChange={(e) => setMaxLevel(e.target.value === 'all' ? null : Number(e.target.value))}
+            >
+              <option value="all">all levels</option>
+              {levels.map((z) => (
+                <option key={z} value={String(z)}>
+                  z = {f1(z)} mm
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <button type="button" onClick={() => zoomBy(1 / 1.25)} title="Zoom in" aria-label="Zoom in">
           +
         </button>
@@ -419,12 +457,14 @@ interface ItemShapeProps {
   m: number;
   selected: boolean;
   error: boolean;
+  /** Warning-level issue (e.g. floating), shown when there is no error. */
+  warning: boolean;
   dragging: boolean;
   onPointerDown(e: ReactPointerEvent): void;
   onFocus(): void;
 }
 
-function ItemShape({ item, rect, settings, m, selected, error, dragging, onPointerDown, onFocus }: ItemShapeProps) {
+function ItemShape({ item, rect, settings, m, selected, error, warning, dragging, onPointerDown, onFocus }: ItemShapeProps) {
   const def = findBoxType(item.type);
   let features: TopViewFeature[] = [];
   if (def && !rect.broken) {
@@ -448,15 +488,17 @@ function ItemShape({ item, rect, settings, m, selected, error, dragging, onPoint
   const showDims = showLabel && rect.depth > fs * 3.2 && rect.width > dimFs * 7;
   const cx = rect.width / 2;
   const cy = rect.depth / 2;
+  const elevated = rect.z > 1e-6;
+  const badgeFs = Math.min(10 * m, minSide / 4);
 
   return (
     <g
-      className={`item ${selected ? 'selected' : ''} ${error ? 'error' : ''} ${dragging ? 'dragging' : ''} ${rect.broken ? 'broken' : ''}`}
+      className={`item ${selected ? 'selected' : ''} ${error ? 'error' : warning ? 'warning' : ''} ${elevated ? 'elevated' : ''} ${dragging ? 'dragging' : ''} ${rect.broken ? 'broken' : ''}`}
       transform={`translate(${rect.x} ${rect.y})`}
       tabIndex={0}
       role="button"
       aria-pressed={selected}
-      aria-label={`${item.label}, ${f1(rect.width)} by ${f1(rect.depth)} mm at ${f1(rect.x)}, ${f1(rect.y)}`}
+      aria-label={`${item.label}, ${f1(rect.width)} by ${f1(rect.depth)} mm at ${f1(rect.x)}, ${f1(rect.y)}${elevated ? `, elevated ${f1(rect.z)} mm` : ''}`}
       onPointerDown={onPointerDown}
       onFocus={onFocus}
     >
@@ -486,6 +528,20 @@ function ItemShape({ item, rect, settings, m, selected, error, dragging, onPoint
         <text className="item-dims" x={cx} y={cy + dimFs * 1.15} fontSize={dimFs} strokeWidth={dimFs * 0.25}>
           {f1(rect.width)} × {f1(rect.depth)} × {f1(rect.height)}
         </text>
+      )}
+      {elevated && badgeFs > 0 && (
+        <g className="z-badge" aria-hidden="true">
+          <rect
+            x={badgeFs * 0.3}
+            y={badgeFs * 0.3}
+            width={badgeFs * (1.6 + 0.62 * f1(rect.z).length)}
+            height={badgeFs * 1.35}
+            rx={badgeFs * 0.3}
+          />
+          <text x={badgeFs * 0.6} y={badgeFs * 1.3} fontSize={badgeFs}>
+            ↑ {f1(rect.z)}
+          </text>
+        </g>
       )}
       {rect.broken && (
         <text className="item-label" x={cx} y={cy + 3} fontSize={8}>

@@ -15,4 +15,6 @@ export const fakeBox: BoxTypeDefinition = {
   build: () => ({}) as Solid,
   draw: () => [],
   validate: (item) => (Number(item.params.w) < 5 ? ['too narrow'] : []),
+  /** Optional `e` param (not in the spec, so it never appears in default params). */
+  stackEngagement: (item) => (typeof item.params.e === 'number' ? item.params.e : 0),
 };

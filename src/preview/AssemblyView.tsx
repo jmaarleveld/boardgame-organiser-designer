@@ -29,6 +29,7 @@ const COLORS: Record<ItemTint, number> = {
   normal: 0xe4d9c2, // print‑plastic off‑white (matches the top view's item fill family)
   problem: 0xf0a040, // overlap / outside usable area
   tall: 0xe5534b, // sticks out of the box
+  floating: 0x9cc8f0, // stacked but not fully supported
 };
 const SELECT_COLOR = 0x2563eb;
 
@@ -290,7 +291,7 @@ function createAssemblyScene(host: HTMLDivElement, onPick: (id: string) => void)
           id,
           placeholder: obj.geometry === unitBox,
           color: `#${(obj.material as THREE.MeshStandardMaterial).color.getHexString()}`,
-          x: r(b.min.x), y: r(b.min.y), width: r(b.max.x - b.min.x), depth: r(b.max.y - b.min.y), height: r(b.max.z - b.min.z),
+          x: r(b.min.x), y: r(b.min.y), z: r(b.min.z), width: r(b.max.x - b.min.x), depth: r(b.max.y - b.min.y), height: r(b.max.z - b.min.z),
           screen: { x: rect.left + ((top.x + 1) / 2) * rect.width, y: rect.top + ((1 - top.y) / 2) * rect.height },
         };
       });

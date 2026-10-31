@@ -70,6 +70,20 @@ describe('placementMatrix', () => {
     });
   }
 
+  it('translates by z (both rotations)', () => {
+    for (const rot of [0, 90] as const) {
+      const it = { ...item('z', 10, 20, { w: 40, d: 20, h: 10 }, rot), z: 31.2 };
+      const size = localSize(it, settings);
+      const b = transformedBounds(placementMatrix(it, size.depth), size.width, size.depth, size.height);
+      const r = itemRect(it, settings);
+      expect(b.x).toBeCloseTo(r.x, 9);
+      expect(b.y).toBeCloseTo(r.y, 9);
+      expect(b.z0).toBeCloseTo(31.2, 9);
+      expect(b.z1).toBeCloseTo(r.top, 9);
+    }
+    expect(placementMatrix({ x: 1, y: 2, rotation: 0 }, 5)[14]).toBe(0);
+  });
+
   it('rotation 90 maps the local origin to the top-right corner and local +x to +y', () => {
     const it90 = item('r', 10, 20, { w: 40, d: 20 }, 90);
     const m = placementMatrix(it90, 20);
@@ -119,6 +133,24 @@ describe('classifyItems', () => {
     const items = [item('tall', 1, 1, { w: 20, d: 20, h: 80 })];
     const s = { ...settings, box: { ...settings.box, height: 80 } };
     expect(classifyItems(items, s, layoutSummary(items, s)).get('tall')).toBe('normal');
+  });
+
+  it('tints floating items light blue and uses the top for "tall"', () => {
+    const items = [
+      item('base', 1, 1, { w: 40, d: 20, h: 10 }),
+      { ...item('on', 1, 1, { w: 40, d: 20, h: 10 }), z: 10 },
+      { ...item('float', 100, 1, { w: 40, d: 20, h: 10 }), z: 5 },
+      { ...item('high', 1, 50, { w: 20, d: 20, h: 10 }), z: 45 },
+      { ...item('sunk', 1, 1, { w: 10, d: 10, h: 10 }), z: 5 },
+    ];
+    const t = classifyItems(items, settings, layoutSummary(items, settings));
+    expect(Object.fromEntries(t)).toMatchObject({ base: 'problem', on: 'problem', float: 'floating', high: 'tall', sunk: 'problem' });
+    const ok = items.slice(0, 3);
+    expect(Object.fromEntries(classifyItems(ok, settings, layoutSummary(ok, settings)))).toEqual({
+      base: 'normal',
+      on: 'normal',
+      float: 'floating',
+    });
   });
 
   it('parameter warnings alone do not tint', () => {

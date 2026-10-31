@@ -4,7 +4,7 @@
  */
 import type { ResolvedItem } from '../../model/types';
 import type { GeometryKernel, Solid } from '../../geometry/types';
-import type { TopViewFeature } from '../types';
+import type { ParamSpec, TopViewFeature } from '../types';
 
 /** Overshoot used to make boolean cuts clean (cutters poke through faces). */
 export const EPS = 0.01;
@@ -53,6 +53,8 @@ export interface NotchSpec {
   width: number;
   /** Notch depth from the top edge. */
   depth: number;
+  /** Extra material above `top` the cutter must also clear (e.g. a stacking lip). */
+  above?: number;
 }
 
 /**
@@ -66,7 +68,7 @@ export function notchCutter(kernel: GeometryKernel, n: NotchSpec): Solid | null 
   const len = n.thickness + 2 * EPS;
   const parts: Solid[] = [];
   const rectBottom = Math.min(zc, n.top);
-  const rectHeight = n.top + EPS - rectBottom;
+  const rectHeight = n.top + Math.max(0, n.above ?? 0) + EPS - rectBottom;
   if (n.axis === 'x') {
     const y0 = n.wallPos - EPS;
     if (rectHeight > 0) parts.push(kernel.box(n.width, len, rectHeight, [n.center - r, y0, rectBottom]));
@@ -151,4 +153,217 @@ export function validateNotch(
 
 export function round(v: number): number {
   return Math.round(v * 100) / 100;
+}
+
+/* ---------------------------------------------------------------- stacking */
+
+export const STACK_TOPS = ['none', 'lip'] as const;
+export const STACK_BOTTOMS = ['none', 'recess', 'plug'] as const;
+export type StackTop = (typeof STACK_TOPS)[number];
+export type StackBottom = (typeof STACK_BOTTOMS)[number];
+
+/** Minimum remaining (inner) wall thickness next to a recess. */
+export const MIN_RECESS_WALL = 0.4;
+
+/**
+ * "Stacking" parameter group shared by every cavity type (tray, divided tray,
+ * card tray). Designed for same‑footprint, same‑wall trays stacked directly
+ * on top of each other.
+ */
+export const stackingParams: ParamSpec[] = [
+  {
+    key: 'stackTop',
+    label: 'Top edge',
+    kind: 'select',
+    default: 'none',
+    options: [
+      { value: 'none', label: 'Flat' },
+      { value: 'lip', label: 'Lip (outer half of the wall rises)' },
+    ],
+    group: 'Stacking',
+    help: 'A lip locates a tray with a recessed base stacked on top.',
+  },
+  {
+    key: 'stackBottom',
+    label: 'Base',
+    kind: 'select',
+    default: 'none',
+    options: [
+      { value: 'none', label: 'Flat' },
+      { value: 'recess', label: 'Recess (sits on a lip)' },
+      { value: 'plug', label: 'Plug (drops into the cavity below)' },
+    ],
+    group: 'Stacking',
+    help: 'Made for a same‑footprint, same‑wall tray below.',
+  },
+  {
+    key: 'lipHeight',
+    label: 'Lip height',
+    kind: 'number',
+    default: 2,
+    min: 0.2,
+    step: 0.1,
+    unit: 'mm',
+    group: 'Stacking',
+    help: 'Height of the lip on top, and of the lip a recessed base receives.',
+    visibleIf: (p) => p.stackTop === 'lip' || p.stackBottom === 'recess',
+  },
+  {
+    key: 'plugHeight',
+    label: 'Plug height',
+    kind: 'number',
+    default: 2,
+    min: 0.2,
+    step: 0.1,
+    unit: 'mm',
+    group: 'Stacking',
+    visibleIf: (p) => p.stackBottom === 'plug',
+  },
+  {
+    key: 'stackClearance',
+    label: 'Stack clearance',
+    kind: 'number',
+    default: 0.15,
+    min: 0,
+    step: 0.05,
+    unit: 'mm',
+    group: 'Stacking',
+    help: 'Gap between a recess / plug and the tray below.',
+    visibleIf: (p) => p.stackBottom === 'recess' || p.stackBottom === 'plug',
+  },
+];
+
+export interface Stacking {
+  top: StackTop;
+  bottom: StackBottom;
+  lipHeight: number;
+  plugHeight: number;
+  clearance: number;
+  /** Lip height actually added on top (0 without a lip). */
+  lipH: number;
+  /** Plug height actually added below the floor (0 without a plug). The floor starts at Z = plugH. */
+  plugH: number;
+  /** Depth of the recess ring (0 without a recess). */
+  recessDepth: number;
+}
+
+export function stacking(item: ResolvedItem): Stacking {
+  const top = str<StackTop>(item, 'stackTop', STACK_TOPS, 'none');
+  const bottom = str<StackBottom>(item, 'stackBottom', STACK_BOTTOMS, 'none');
+  const lipHeight = num(item, 'lipHeight', 2);
+  const plugHeight = num(item, 'plugHeight', 2);
+  const clearance = num(item, 'stackClearance', 0.15);
+  return {
+    top,
+    bottom,
+    lipHeight,
+    plugHeight,
+    clearance,
+    lipH: top === 'lip' ? Math.max(0, lipHeight) : 0,
+    plugH: bottom === 'plug' ? Math.max(0, plugHeight) : 0,
+    recessDepth: bottom === 'recess' ? Math.max(0, lipHeight + clearance) : 0,
+  };
+}
+
+/**
+ * How deep the base sinks into the tray below. A recessed base sits with its
+ * inner wall half on the inner half of the lower wall, so the lip (lipHeight)
+ * is engaged and the extra recess depth (clearance) stays as a gap above the
+ * lip. A plug drops plugHeight into the cavity below.
+ */
+export function stackEngagement(item: ResolvedItem): number {
+  const s = stacking(item);
+  if (s.bottom === 'recess') return Math.max(0, s.lipHeight);
+  if (s.bottom === 'plug') return s.plugH;
+  return 0;
+}
+
+/** Outer height of a stackable cavity box. */
+export function stackedHeight(innerHeight: number, floor: number, s: Stacking): number {
+  return s.plugH + floor + innerHeight + s.lipH;
+}
+
+/** Raise notches by the plug height and let them cut through the lip. */
+export function stackNotches(notches: NotchSpec[], s: Stacking): NotchSpec[] {
+  if (!s.plugH && !s.lipH) return notches;
+  return notches.map((n) => ({ ...n, top: n.top + s.plugH, above: s.lipH }));
+}
+
+/**
+ * Open box with the stacking features: optional plug pad below the floor
+ * (floor at Z = plugH), optional lip ring (outer wall/2) above the wall top,
+ * optional recess ring cut from the outer bottom edge.
+ */
+export function stackedOpenBox(
+  kernel: GeometryKernel,
+  innerWidth: number,
+  innerDepth: number,
+  innerHeight: number,
+  wall: number,
+  floor: number,
+  s: Stacking,
+): Solid {
+  const W = innerWidth + 2 * wall;
+  const D = innerDepth + 2 * wall;
+  const z0 = s.plugH;
+  const wallTop = z0 + floor + innerHeight;
+  const parts: Solid[] = [kernel.box(W, D, floor + innerHeight, [0, 0, z0])];
+  if (s.lipH > 0) {
+    // Ring overlaps the wall by EPS so the union is clean.
+    const t = wall / 2;
+    const ring = kernel.difference(kernel.box(W, D, s.lipH + EPS, [0, 0, wallTop - EPS]), [
+      kernel.box(W - 2 * t, D - 2 * t, s.lipH + 3 * EPS, [t, t, wallTop - 2 * EPS]),
+    ]);
+    parts.push(ring);
+  }
+  if (s.plugH > 0) {
+    const c = s.clearance;
+    const pw = W - 2 * wall - 2 * c;
+    const pd = D - 2 * wall - 2 * c;
+    if (pw > 0 && pd > 0) parts.push(kernel.box(pw, pd, s.plugH + EPS, [wall + c, wall + c, 0]));
+  }
+  let solid = parts.length === 1 ? parts[0] : kernel.union(parts);
+  const cutters: Solid[] = [kernel.box(innerWidth, innerDepth, innerHeight + s.lipH + EPS, [wall, wall, z0 + floor])];
+  if (s.recessDepth > 0) {
+    const r = wall / 2 + s.clearance;
+    if (W - 2 * r > 0 && D - 2 * r > 0) {
+      const ring = kernel.difference(kernel.box(W + 2 * EPS, D + 2 * EPS, s.recessDepth + EPS, [-EPS, -EPS, -EPS]), [
+        kernel.box(W - 2 * r, D - 2 * r, s.recessDepth + 3 * EPS, [r, r, -2 * EPS]),
+      ]);
+      cutters.push(ring);
+    }
+  }
+  solid = kernel.difference(solid, cutters);
+  return solid;
+}
+
+/** Validation of the stacking parameters for a cavity box. */
+export function validateStacking(
+  problems: string[],
+  s: Stacking,
+  wall: number,
+  floor: number,
+  innerWidth: number,
+  innerDepth: number,
+  innerHeight: number,
+): void {
+  if (s.top === 'lip' || s.bottom === 'recess') requirePositive(problems, 'Lip height', s.lipHeight);
+  if (s.bottom === 'plug') requirePositive(problems, 'Plug height', s.plugHeight);
+  if ((s.bottom === 'recess' || s.bottom === 'plug') && s.clearance < 0) {
+    problems.push(`Stack clearance must not be negative (is ${s.clearance}).`);
+  }
+  if (s.bottom === 'recess') {
+    const remaining = wall / 2 - s.clearance;
+    if (remaining < MIN_RECESS_WALL - 1e-9) {
+      problems.push(
+        `Recess leaves only ${round(remaining)} mm of wall (wall/2 − clearance); needs at least ${MIN_RECESS_WALL} mm — use a thicker wall or less clearance.`,
+      );
+    }
+    if (s.recessDepth >= floor + innerHeight) {
+      problems.push(`Recess depth (${round(s.recessDepth)} mm) must be smaller than the wall height (${round(floor + innerHeight)} mm).`);
+    }
+  }
+  if (s.bottom === 'plug' && (innerWidth - 2 * s.clearance <= 0 || innerDepth - 2 * s.clearance <= 0)) {
+    problems.push('Plug clearance is larger than the cavity: the plug would have no size.');
+  }
 }

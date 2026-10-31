@@ -24,6 +24,9 @@ export function Inspector({ previewSlot, exportSlot }: InspectorProps) {
   const rotateItem = useStore((s) => s.rotateItem);
   const removeItem = useStore((s) => s.removeItem);
   const duplicateItem = useStore((s) => s.duplicateItem);
+  const setElevation = useStore((s) => s.setElevation);
+  const stackOnBelow = useStore((s) => s.stackOnBelow);
+  const duplicateItemStacked = useStore((s) => s.duplicateItemStacked);
 
   const item = project.items.find((i) => i.id === selectedId);
   // The preview slot is rendered at the same position with and without a
@@ -75,6 +78,27 @@ export function Inspector({ previewSlot, exportSlot }: InspectorProps) {
           </button>
         </div>
 
+        <h3>Elevation</h3>
+        <div className="grid2">
+          <NumberField label="Z (bottom)" unit="mm" min={0} value={item.z ?? 0} onChange={(v) => setElevation(item.id, v)} />
+          <div className="field">
+            <span className="field-label">Top</span>
+            <span className="elevation-top" aria-label="Computed top">{f1(rect.top)} mm</span>
+          </div>
+        </div>
+        <div className="row">
+          <button
+            type="button"
+            onClick={() => stackOnBelow(item.id)}
+            title="Set Z so the item rests on the highest item it overlaps (or the floor)"
+          >
+            Rest on items below
+          </button>
+          <button type="button" onClick={() => duplicateItemStacked(item.id)} title="Duplicate on top of this item (Ctrl+Shift+D)">
+            Duplicate on top
+          </button>
+        </div>
+
         <h3>Thickness</h3>
         <OverrideField
           label="Wall"
@@ -97,7 +121,7 @@ export function Inspector({ previewSlot, exportSlot }: InspectorProps) {
         )}
 
         <p className="footprint">
-          Outer {f1(rect.width)} × {f1(rect.depth)} × {f1(rect.height)} mm
+          Outer {f1(rect.width)} × {f1(rect.depth)} × {f1(rect.height)} mm · top at {f1(rect.top)} mm
           {rect.broken && <span className="error-text"> (footprint unavailable)</span>}
         </p>
 

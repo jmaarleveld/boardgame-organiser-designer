@@ -6,10 +6,16 @@ import {
   notchCutter,
   notchRect,
   num,
-  openBox,
   requirePositive,
+  stackEngagement,
+  stackedHeight,
+  stackedOpenBox,
+  stacking,
+  stackingParams,
+  stackNotches,
   str,
   validateNotch,
+  validateStacking,
   wallPairNotches,
   type NotchSpec,
 } from './common';
@@ -28,6 +34,7 @@ function dims(item: ResolvedItem) {
     nw: num(item, 'notchWidth'),
     nd: num(item, 'notchDepth'),
     sides: str<NotchSides>(item, 'notchSides', SIDES, 'long'),
+    stack: stacking(item),
   };
 }
 
@@ -42,7 +49,10 @@ function notches(item: ResolvedItem): NotchSpec[] {
   const shortAxis: 'x' | 'y' = longAxis === 'x' ? 'y' : 'x';
   const axes: ('x' | 'y')[] =
     d.sides === 'long' ? [longAxis] : d.sides === 'short' ? [shortAxis] : [longAxis, shortAxis];
-  return axes.flatMap((axis) => wallPairNotches(axis, d.iw, d.id, d.ih, d.wall, d.floor, d.nw, d.nd));
+  return stackNotches(
+    axes.flatMap((axis) => wallPairNotches(axis, d.iw, d.id, d.ih, d.wall, d.floor, d.nw, d.nd)),
+    d.stack,
+  );
 }
 
 export const tray: BoxTypeDefinition = {
@@ -90,16 +100,17 @@ export const tray: BoxTypeDefinition = {
       help: 'Measured down from the top edge.',
       visibleIf: (p) => p.fingerNotch !== false,
     },
+    ...stackingParams,
   ],
 
   footprint(item) {
     const d = dims(item);
-    return { width: d.iw + 2 * d.wall, depth: d.id + 2 * d.wall, height: d.ih + d.floor };
+    return { width: d.iw + 2 * d.wall, depth: d.id + 2 * d.wall, height: stackedHeight(d.ih, d.floor, d.stack) };
   },
 
   build(item, kernel) {
     const d = dims(item);
-    const body = openBox(kernel, d.iw, d.id, d.ih, d.wall, d.floor);
+    const body = stackedOpenBox(kernel, d.iw, d.id, d.ih, d.wall, d.floor, d.stack);
     const cutters = notches(item)
       .map((n) => notchCutter(kernel, n))
       .filter((s): s is Solid => s !== null);
@@ -127,6 +138,9 @@ export const tray: BoxTypeDefinition = {
       const span = d.sides === 'long' ? longSpan : shortSpan;
       validateNotch(problems, d.nw, d.nd, span, d.ih, d.sides === 'long' ? 'long wall' : 'short wall');
     }
+    validateStacking(problems, d.stack, d.wall, d.floor, d.iw, d.id, d.ih);
     return problems;
   },
+
+  stackEngagement,
 };

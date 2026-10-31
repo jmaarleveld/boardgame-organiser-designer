@@ -89,6 +89,18 @@ describe('persistence', () => {
     bad((j) => (j.items = {}), /items/);
     bad((j) => (j.items = [{ id: 'a', type: 't', label: 'l', x: 0, y: 0, rotation: 45, params: {} }]), /rotation/);
     bad((j) => (j.items = [{ id: 'a', type: 't', label: 'l', x: 0, y: 0, rotation: 0, params: [] }]), /params/);
+    bad((j) => (j.items = [{ id: 'a', type: 't', label: 'l', x: 0, y: 0, z: -1, rotation: 0, params: {} }]), /items\[0\]\.z must not be negative/);
+    bad((j) => (j.items = [{ id: 'a', type: 't', label: 'l', x: 0, y: 0, z: 'high', rotation: 0, params: {} }]), /items\[0\]\.z/);
+  });
+  it('accepts a missing or non-negative finite z', () => {
+    const p = createPersistence(new MemStorage());
+    const proj = createEmptyProject();
+    proj.items.push(item('a'), item('b', { z: 0 }), item('c', { z: 31.2 }));
+    const back = p.fromJson(p.toJson(proj));
+    expect(back.items.map((i) => i.z)).toEqual([undefined, 0, 31.2]);
+    expect('z' in back.items[0]).toBe(false);
+    // Infinity serialises as null, which is rejected.
+    expect(() => p.fromJson(p.toJson({ ...proj, items: [item('d', { z: Infinity })] }))).toThrow(/z/);
   });
 });
 

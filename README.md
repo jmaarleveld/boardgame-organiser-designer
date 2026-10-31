@@ -84,6 +84,7 @@ Keyboard (when focus is not in a text field):
 | `R` | Rotate the selected item by 90° |
 | `Delete` / `Backspace` | Remove the selected item |
 | `Ctrl+D` / `Cmd+D` | Duplicate the selected item |
+| `Ctrl+Shift+D` / `Cmd+Shift+D` | Duplicate the selected item on top of itself (see Stacking) |
 | `Ctrl+Z` / `Cmd+Z` | Undo |
 | `Ctrl+Y` or `Ctrl+Shift+Z` | Redo |
 | Arrow keys | Nudge the selected item by one grid step |
@@ -151,6 +152,68 @@ Solid filler block to take up leftover space. Wall and floor settings are ignore
 | `width` | 20 | Size in X |
 | `depth` | 40 | Size in Y |
 | `height` | 30 | Size in Z |
+
+### Platform (`platform`)
+
+Flat plate that spans several trays and carries the next level. Optional corner
+stops are four small blocks under the plate that drop just inside the cavities
+of the trays below and keep it from sliding. Wall and floor settings are ignored.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `width` | 100 | Size in X |
+| `depth` | 100 | Size in Y |
+| `thickness` | 2 | Plate thickness |
+| `cornerStops` | true | Add the four corner stops |
+| `stopSize` | 6 | Side of each square stop |
+| `stopHeight` | 2 | Height of the stops below the plate (= how far the platform sinks into the trays below) |
+| `stopInset` | 1.75 | Distance of the stops from the plate edge; use the wall + clearance of the trays below |
+
+## Stacking
+
+Items can sit on top of other items, not only on the game box floor.
+
+* **Elevation.** Every item has a `z` (the height of its bottom above the game
+  box floor, default 0). The inspector shows it in the *Elevation* group next to
+  the computed top (`z` + outer height). The layout checks work in 3D: two items
+  that overlap in the top view only collide when their heights overlap too, and
+  "too tall" uses the top of the item.
+* **Rest on items below** sets `z` so the item rests on the highest item it
+  overlaps in the top view (or on the floor when it overlaps nothing).
+* **Duplicate on top** (`Ctrl+Shift+D`) puts a copy at the same position on top
+  of the selected item and names it "… (level 2)", "… (level 3)", and so on.
+* **Support check.** An item with `z > 0` must be fully carried: its footprint
+  must be covered by items whose tops are exactly at its base (within 0.01 mm).
+  Otherwise it is listed as *Floating* (a warning, light blue in the assembly
+  view). An item whose base lies inside another item's body is an error.
+* **Level filter.** When the layout has more than one level, a *Show up to*
+  menu appears next to the zoom buttons of the top view. Pick a level to hide the
+  items stacked above it so you can edit the lower ones. Elevated items have a
+  dashed outline and an `↑ z` badge.
+
+Stacking features of the boxes: tray, divided tray and card tray all have a
+*Stacking* parameter group. These features are made for **trays with the same
+footprint and the same wall thickness** stacked directly on top of each other.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `stackTop` | `none` | `lip`: the outer half of the wall (`wall/2`) rises `lipHeight` above the wall top. The outer height grows by `lipHeight`. |
+| `stackBottom` | `none` | `recess`: a ring `wall/2 + stackClearance` wide and `lipHeight + stackClearance` deep is cut from the outer bottom edge, so the tray sits on a `lip` tray below. `plug`: a solid pad `(inner − 2·stackClearance)` × `plugHeight` under the floor drops into the cavity below. The outer height grows by `plugHeight`. |
+| `lipHeight` | 2 | Height of the lip, and of the lip a recessed base receives |
+| `plugHeight` | 2 | Height of the plug |
+| `stackClearance` | 0.15 | Gap around a recess or plug |
+
+How far a base sinks into the item below (its *engagement*) is `lipHeight` for
+a recess (the inner half of the wall rests on the lower wall; the extra
+clearance stays as a gap above the lip), `plugHeight` for a plug and
+`stopHeight` for a platform with corner stops. *Rest on items below* and
+*Duplicate on top* take this into account. A recess needs at least 0.4 mm of
+wall left next to it (`wall/2 − stackClearance ≥ 0.4`). Finger notches cut
+through the lip. A plug needs an empty cavity below: it collides with the
+dividers of a divided tray.
+
+The sample project shows both mechanisms: a lip tray with a recessed tray on
+top, and a platform on two trays that carries a third tray.
 
 ## Adding a box type
 

@@ -48,6 +48,11 @@ export interface PlacedItem {
   x: number;
   y: number;
   rotation: Rotation;
+  /**
+   * Bottom elevation above the game box floor (mm). undefined ⇒ 0. Items with
+   * z > 0 are stacked on other items (see src/model/layout.ts).
+   */
+  z?: number;
   /** Per‑item wall thickness override; undefined → settings.defaults.wall */
   wall?: number;
   /** Per‑item floor thickness override; undefined → settings.defaults.floor */

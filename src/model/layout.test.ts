@@ -8,7 +8,10 @@ import {
   itemsOutsideUsable,
   itemsTooTall,
   layoutSummary,
+  rectCovered,
+  restingElevation,
   safeItemRect,
+  unsupportedItems,
   snapPosition,
   usableArea,
 } from './layout';
@@ -21,8 +24,12 @@ const settings: ProjectSettings = {
   gridSnap: 5,
 };
 
-function item(id: string, x: number, y: number, p: Partial<{ w: number; d: number; h: number }> = {}, rotation: 0 | 90 = 0): PlacedItem {
+function item(id: string, x: number, y: number, p: Partial<{ w: number; d: number; h: number; e: number }> = {}, rotation: 0 | 90 = 0): PlacedItem {
   return { id, type: 'fake', label: id.toUpperCase(), x, y, rotation, params: { ...p } };
+}
+
+function at(z: number, i: PlacedItem): PlacedItem {
+  return { ...i, z };
 }
 
 beforeEach(() => {
@@ -38,7 +45,7 @@ describe('usableArea', () => {
 
 describe('itemRect', () => {
   it('uses the rotated footprint', () => {
-    expect(itemRect(item('a', 3, 4), settings)).toEqual({ x: 3, y: 4, width: 40, depth: 20, height: 10 });
+    expect(itemRect(item('a', 3, 4), settings)).toEqual({ x: 3, y: 4, width: 40, depth: 20, height: 10, z: 0, top: 10 });
     expect(itemRect(item('a', 3, 4, {}, 90), settings)).toMatchObject({ width: 20, depth: 40 });
   });
   it('safeItemRect falls back for unknown types', () => {
@@ -160,5 +167,88 @@ describe('layoutSummary', () => {
   it('reports negative slack when items exceed the usable area', () => {
     const s = layoutSummary([item('a', 1, 2, { w: 250 })], settings);
     expect(s.slackX).toBe(198 - 250);
+  });
+});
+
+describe('stacking', () => {
+  it('itemRect reports z and top', () => {
+    expect(itemRect(at(5, item('a', 3, 4)), settings)).toMatchObject({ z: 5, top: 15, height: 10 });
+  });
+
+  it('3D overlaps: XY overlap only collides when Z ranges intersect', () => {
+    const base = item('base', 1, 2); // 40×20×10 at z 0
+    expect(findOverlaps([base, at(10, item('on', 1, 2))], settings)).toEqual([]);
+    expect(findOverlaps([base, at(12, item('above', 1, 2))], settings)).toEqual([]);
+    expect(findOverlaps([base, at(9, item('sunk', 1, 2))], settings)).toEqual([['base', 'sunk']]);
+    expect(findOverlaps([base, item('same', 10, 2)], settings)).toEqual([['base', 'same']]);
+    // Engagement: an upper item at z 8 sinking 2 mm into the lower one is fine…
+    expect(findOverlaps([base, at(8, item('lip', 1, 2, { e: 2 }))], settings)).toEqual([]);
+    // …but at z 7 its effective bottom (9) is inside the lower body.
+    expect(findOverlaps([base, at(7, item('deep', 1, 2, { e: 2 }))], settings)).toEqual([['base', 'deep']]);
+    // An item whose engagement region lies inside the lower one is only checked above z + e.
+    expect(findOverlaps([at(8, item('lip', 1, 2, { e: 2 })), base], settings)).toEqual([]);
+  });
+
+  it('layoutSummary reports an intersection error for a base inside another body', () => {
+    const s = layoutSummary([item('base', 1, 2), at(4, item('mid', 1, 2))], settings);
+    expect(s.errorCount).toBe(1);
+    expect(s.issues[0].message).toMatch(/MID intersects BASE/);
+    expect(s.issues[0].itemIds).toEqual(['mid', 'base']);
+  });
+
+  it('itemsTooTall uses the top', () => {
+    expect(itemsTooTall([at(40, item('a', 1, 2, { h: 10 })), at(41, item('b', 50, 2, { h: 10 }))], settings)).toEqual(['b']);
+  });
+
+  it('rectCovered is exact (coordinate compression)', () => {
+    const t = { x: 0, y: 0, width: 10, depth: 10 };
+    expect(rectCovered(t, [{ x: 0, y: 0, width: 5, depth: 10 }, { x: 5, y: 0, width: 5, depth: 10 }])).toBe(true);
+    expect(rectCovered(t, [{ x: 0, y: 0, width: 5, depth: 10 }, { x: 5.5, y: 0, width: 5, depth: 10 }])).toBe(false);
+    expect(rectCovered(t, [{ x: -5, y: -5, width: 20, depth: 20 }])).toBe(true);
+    // L-shaped union with a missing corner.
+    expect(
+      rectCovered(t, [
+        { x: 0, y: 0, width: 10, depth: 5 },
+        { x: 0, y: 5, width: 5, depth: 5 },
+      ]),
+    ).toBe(false);
+    expect(rectCovered(t, [])).toBe(false);
+  });
+
+  it('unsupportedItems: two supporters cover one item; gaps, wrong heights and partial cover float', () => {
+    const a = item('a', 1, 2); // x 1..41
+    const b = item('b', 41, 2); // x 41..81
+    const plate = at(10, item('plate', 1, 2, { w: 80, d: 20, h: 2 }));
+    expect(unsupportedItems([a, b, plate], settings)).toEqual([]);
+    // b shorter → only half covered at z = 10.
+    const bLow = item('b', 41, 2, { h: 9 });
+    expect(unsupportedItems([a, bLow, plate], settings)).toEqual(['plate']);
+    // gap between supporters
+    const bGap = item('b', 42, 2);
+    expect(unsupportedItems([a, bGap, plate], settings)).toEqual(['plate']);
+    // nothing underneath at all
+    expect(unsupportedItems([at(5, item('x', 100, 50))], settings)).toEqual(['x']);
+    // engagement: resting at z 8 with e 2 on a 10 high item is supported
+    expect(unsupportedItems([a, at(8, item('lip', 1, 2, { e: 2 }))], settings)).toEqual([]);
+    // tolerance 0.01 mm
+    expect(unsupportedItems([a, at(10.005, item('t', 1, 2))], settings)).toEqual([]);
+    expect(unsupportedItems([a, at(10.05, item('t', 1, 2))], settings)).toEqual(['t']);
+  });
+
+  it('layoutSummary warns about floating items', () => {
+    const s = layoutSummary([at(5, item('x', 100, 50))], settings);
+    expect(s.errorCount).toBe(0);
+    expect(s.warningCount).toBe(1);
+    expect(s.issues[0]).toMatchObject({ severity: 'warning', kind: 'floating', itemIds: ['x'] });
+    expect(s.issues[0].message).toMatch(/^Floating: nothing underneath X/);
+  });
+
+  it('restingElevation = max top of XY-overlapping others − engagement', () => {
+    const items = [item('a', 1, 2), item('b', 41, 2, { h: 25 }), item('far', 120, 50, { h: 40 }), at(3, item('m', 20, 2, { e: 2 }))];
+    expect(restingElevation('m', items, settings)).toBe(23);
+    // Rests on whatever it overlaps, regardless of which one is currently higher (m.top = 3 + 10).
+    expect(restingElevation('a', items, settings)).toBe(13);
+    expect(restingElevation('far', items, settings)).toBe(0);
+    expect(restingElevation('nope', items, settings)).toBe(0);
   });
 });

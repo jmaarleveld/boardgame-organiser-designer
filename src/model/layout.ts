@@ -4,8 +4,11 @@
 import type { PlacedItem, ProjectSettings } from './types';
 import { placedFootprint, resolveItem } from './resolve';
 import { findBoxType } from '../boxes/registry';
+import { engagementOf } from '../boxes/types';
 
 export const EPS = 1e-6;
+/** Tolerance (mm) for "this item rests on that one" (top of supporter = bottom + engagement). */
+export const SUPPORT_TOL = 0.01;
 
 export interface Rect {
   x: number;
@@ -16,10 +19,16 @@ export interface Rect {
 
 export interface ItemRect extends Rect {
   height: number;
+  /** Bottom elevation (item.z ?? 0). */
+  z: number;
+  /** z + height. */
+  top: number;
 }
 
 export interface ValidationIssue {
   severity: 'error' | 'warning';
+  /** Machine‑readable kind for issues the views style specially. */
+  kind?: 'floating';
   itemIds: string[];
   message: string;
 }
@@ -38,7 +47,25 @@ export function usableArea(settings: ProjectSettings): Rect {
 /** Rotated outer rectangle of a placed item. Throws for unknown box types. */
 export function itemRect(item: PlacedItem, settings: ProjectSettings): ItemRect {
   const fp = placedFootprint(item, settings);
-  return { x: item.x, y: item.y, width: fp.width, depth: fp.depth, height: fp.height };
+  const z = elevationOf(item);
+  return { x: item.x, y: item.y, width: fp.width, depth: fp.depth, height: fp.height, z, top: z + fp.height };
+}
+
+/** item.z with undefined / invalid → 0. */
+export function elevationOf(item: PlacedItem): number {
+  const z = item.z;
+  return typeof z === 'number' && Number.isFinite(z) && z > 0 ? z : 0;
+}
+
+/** Stack engagement of a placed item (0 for unknown types or failing definitions). */
+export function itemEngagement(item: PlacedItem, settings: ProjectSettings): number {
+  const def = findBoxType(item.type);
+  if (!def?.stackEngagement) return 0;
+  try {
+    return engagementOf(def, resolveItem(item, settings));
+  } catch {
+    return 0;
+  }
 }
 
 /** Size used for items whose type is unknown or whose footprint cannot be computed. */
@@ -60,7 +87,8 @@ export function safeItemRect(
       /* fall through */
     }
   }
-  return { x: item.x, y: item.y, width: FALLBACK_SIZE, depth: FALLBACK_SIZE, height: 0, broken: true };
+  const z = elevationOf(item);
+  return { x: item.x, y: item.y, width: FALLBACK_SIZE, depth: FALLBACK_SIZE, height: 0, z, top: z, broken: true };
 }
 
 /** Strict overlap: touching edges (within EPS) is allowed. */
@@ -83,15 +111,112 @@ export function rectInside(inner: Rect, outer: Rect): boolean {
   );
 }
 
+type StackRect = ItemRect & { broken?: true; engagement: number };
+
+function stackRects(items: PlacedItem[], settings: ProjectSettings): StackRect[] {
+  return items.map((i) => {
+    const r = safeItemRect(i, settings);
+    return { ...r, engagement: r.broken ? 0 : itemEngagement(i, settings) };
+  });
+}
+
+/**
+ * Z ranges of two XY‑overlapping items intersect. The upper item (higher z)
+ * may sink `engagement` mm into the lower one: its effective bottom is
+ * z + engagement. Items at the same z always collide.
+ */
+function zCollide(a: StackRect, b: StackRect): boolean {
+  if (Math.abs(a.z - b.z) <= EPS) return true;
+  const [lo, hi] = a.z < b.z ? [a, b] : [b, a];
+  return hi.z + hi.engagement < lo.top - EPS && lo.z < hi.top - EPS;
+}
+
+/** Pairs of items that overlap in XY and whose (engagement‑adjusted) Z ranges intersect. */
 export function findOverlaps(items: PlacedItem[], settings: ProjectSettings): [string, string][] {
-  const rects = items.map((i) => safeItemRect(i, settings));
+  const rects = stackRects(items, settings);
   const out: [string, string][] = [];
   for (let a = 0; a < items.length; a++) {
     for (let b = a + 1; b < items.length; b++) {
-      if (rectsOverlap(rects[a], rects[b])) out.push([items[a].id, items[b].id]);
+      if (rectsOverlap(rects[a], rects[b]) && zCollide(rects[a], rects[b])) out.push([items[a].id, items[b].id]);
     }
   }
   return out;
+}
+
+/**
+ * True when `target` is completely covered by the union of `cover` (EPS
+ * tolerance). Exact, via coordinate compression: every cell of the grid
+ * spanned by all rectangle edges inside `target` must lie in some cover rect.
+ */
+export function rectCovered(target: Rect, cover: Rect[]): boolean {
+  if (target.width <= EPS || target.depth <= EPS) return true;
+  const x0 = target.x;
+  const y0 = target.y;
+  const x1 = target.x + target.width;
+  const y1 = target.y + target.depth;
+  const clipped: Rect[] = [];
+  for (const c of cover) {
+    const cx0 = Math.max(x0, c.x);
+    const cy0 = Math.max(y0, c.y);
+    const cx1 = Math.min(x1, c.x + c.width);
+    const cy1 = Math.min(y1, c.y + c.depth);
+    if (cx1 - cx0 > EPS && cy1 - cy0 > EPS) clipped.push({ x: cx0, y: cy0, width: cx1 - cx0, depth: cy1 - cy0 });
+  }
+  if (!clipped.length) return false;
+  const uniq = (vs: number[]) => {
+    const sorted = vs.slice().sort((a, b) => a - b);
+    const out: number[] = [];
+    for (const v of sorted) if (!out.length || v - out[out.length - 1] > EPS) out.push(v);
+    return out;
+  };
+  const xs = uniq([x0, x1, ...clipped.flatMap((c) => [c.x, c.x + c.width])]);
+  const ys = uniq([y0, y1, ...clipped.flatMap((c) => [c.y, c.y + c.depth])]);
+  for (let i = 0; i + 1 < xs.length; i++) {
+    const mx = (xs[i] + xs[i + 1]) / 2;
+    for (let j = 0; j + 1 < ys.length; j++) {
+      const my = (ys[j] + ys[j + 1]) / 2;
+      const inside = clipped.some((c) => mx > c.x - EPS && mx < c.x + c.width + EPS && my > c.y - EPS && my < c.y + c.depth + EPS);
+      if (!inside) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Ids of items with z > 0 that are not fully supported: their XY rect must be
+ * covered by the union of the rects of items whose top equals the item's
+ * z + engagement (within SUPPORT_TOL).
+ */
+export function unsupportedItems(items: PlacedItem[], settings: ProjectSettings): string[] {
+  const rects = stackRects(items, settings);
+  const out: string[] = [];
+  items.forEach((item, idx) => {
+    const r = rects[idx];
+    if (!(r.z > EPS)) return;
+    const seat = r.z + r.engagement;
+    const supporters = rects.filter(
+      (o, j) => j !== idx && !o.broken && Math.abs(o.top - seat) <= SUPPORT_TOL && rectsOverlap(o, r),
+    );
+    if (!rectCovered(r, supporters)) out.push(item.id);
+  });
+  return out;
+}
+
+/**
+ * Elevation at which an item rests on whatever it overlaps in XY:
+ * max(top of overlapping others) − engagement, or 0 when it overlaps nothing.
+ */
+export function restingElevation(itemId: string, items: PlacedItem[], settings: ProjectSettings): number {
+  const idx = items.findIndex((i) => i.id === itemId);
+  if (idx < 0) return 0;
+  const rects = stackRects(items, settings);
+  const r = rects[idx];
+  let top = -Infinity;
+  rects.forEach((o, j) => {
+    if (j !== idx && rectsOverlap(o, r)) top = Math.max(top, o.top);
+  });
+  if (top === -Infinity) return 0;
+  return Math.max(0, top - r.engagement);
 }
 
 export function itemsOutsideUsable(items: PlacedItem[], settings: ProjectSettings): string[] {
@@ -101,7 +226,7 @@ export function itemsOutsideUsable(items: PlacedItem[], settings: ProjectSetting
 
 export function itemsTooTall(items: PlacedItem[], settings: ProjectSettings): string[] {
   return items
-    .filter((i) => safeItemRect(i, settings).height > settings.box.height + EPS)
+    .filter((i) => safeItemRect(i, settings).top > settings.box.height + EPS)
     .map((i) => i.id);
 }
 
@@ -272,7 +397,7 @@ const fmt = (v: number) => String(Math.round(v * 10) / 10);
 
 export function layoutSummary(items: PlacedItem[], settings: ProjectSettings): LayoutSummary {
   const usable = usableArea(settings);
-  const rects = items.map((i) => safeItemRect(i, settings));
+  const rects = stackRects(items, settings);
   const bounds = boundingBox(rects);
   const label = (id: string) => items.find((i) => i.id === id)?.label || id;
   const issues: ValidationIssue[] = [];
@@ -289,22 +414,48 @@ export function layoutSummary(items: PlacedItem[], settings: ProjectSettings): L
     }
   });
 
+  const index = new Map(items.map((i, idx) => [i.id, idx]));
   for (const [a, b] of findOverlaps(items, settings)) {
-    issues.push({ severity: 'error', itemIds: [a, b], message: `${label(a)} overlaps ${label(b)}.` });
+    const ra = rects[index.get(a)!];
+    const rb = rects[index.get(b)!];
+    const [lo, hi, loId, hiId] = ra.z <= rb.z ? [ra, rb, a, b] : [rb, ra, b, a];
+    const seat = hi.z + hi.engagement;
+    if (seat > lo.z + EPS && seat < lo.top - EPS) {
+      // Stacked item whose base lies inside the body of the item below.
+      issues.push({
+        severity: 'error',
+        itemIds: [hiId, loId],
+        message: `${label(hiId)} intersects ${label(loId)}: its base at ${fmt(seat)} mm is below the top of ${label(loId)} (${fmt(lo.top)} mm).`,
+      });
+    } else {
+      issues.push({ severity: 'error', itemIds: [a, b], message: `${label(a)} overlaps ${label(b)}.` });
+    }
   }
   for (const id of itemsOutsideUsable(items, settings)) {
     issues.push({ severity: 'error', itemIds: [id], message: `${label(id)} is outside the usable area.` });
   }
   items.forEach((item, idx) => {
-    const h = rects[idx].height;
-    if (h > settings.box.height + EPS) {
+    const { top, z } = rects[idx];
+    if (top > settings.box.height + EPS) {
       issues.push({
         severity: 'error',
         itemIds: [item.id],
-        message: `${label(item.id)} is too tall (${fmt(h)} mm > box ${fmt(settings.box.height)} mm).`,
+        message:
+          z > EPS
+            ? `${label(item.id)} is too tall (top at ${fmt(top)} mm > box ${fmt(settings.box.height)} mm).`
+            : `${label(item.id)} is too tall (${fmt(top)} mm > box ${fmt(settings.box.height)} mm).`,
       });
     }
   });
+  for (const id of unsupportedItems(items, settings)) {
+    const r = rects[index.get(id)!];
+    issues.push({
+      severity: 'warning',
+      kind: 'floating',
+      itemIds: [id],
+      message: `Floating: nothing underneath ${label(id)} supports it fully at z = ${fmt(r.z)} mm.`,
+    });
+  }
 
   for (const item of items) {
     const def = findBoxType(item.type);
@@ -328,6 +479,20 @@ export function layoutSummary(items: PlacedItem[], settings: ProjectSettings): L
     warningCount: issues.filter((i) => i.severity === 'warning').length,
     issues,
   };
+}
+
+/** Ids of items flagged as floating (unsupported) by the summary. */
+export function floatingItemIds(summary: LayoutSummary): Set<string> {
+  const s = new Set<string>();
+  for (const i of summary.issues) if (i.kind === 'floating') i.itemIds.forEach((id) => s.add(id));
+  return s;
+}
+
+/** Ids of items involved in any warning-level issue. */
+export function warningItemIds(summary: LayoutSummary): Set<string> {
+  const s = new Set<string>();
+  for (const i of summary.issues) if (i.severity === 'warning') i.itemIds.forEach((id) => s.add(id));
+  return s;
 }
 
 /** Ids of items involved in any error-level issue. */

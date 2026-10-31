@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clearRegistry, registerBoxType } from '../boxes/registry';
 import { createEmptyProject } from '../model/types';
-import { findOverlaps, usableArea } from '../model/layout';
+import { findOverlaps, unsupportedItems, usableArea } from '../model/layout';
 import { fakeBox } from '../model/fakeBox.testutil';
 import { HISTORY_LIMIT, useStore } from './store';
 
@@ -129,5 +129,50 @@ describe('store', () => {
     expect(st().selectedId).toBeNull();
     st().undo();
     expect(items()).toHaveLength(0);
+  });
+
+  it('setElevation clamps, rounds, clears at 0 and is undoable', () => {
+    const id = st().addItem('fake');
+    st().setElevation(id, 12.34567);
+    expect(items()[0].z).toBe(12.346);
+    st().setElevation(id, -4);
+    expect('z' in items()[0]).toBe(false);
+    st().undo();
+    expect(items()[0].z).toBe(12.346);
+  });
+
+  it('stackOnBelow rests an item on what it overlaps (with engagement) or drops it to the floor', () => {
+    const a = st().addItem('fake'); // 40×20×10
+    const b = st().addItem('fake');
+    const [ia, ib] = items();
+    st().updateItem(b, { x: ia.x, y: ia.y, z: 50, params: { ...ib.params, e: 2 } });
+    st().stackOnBelow(b);
+    expect(items()[1].z).toBe(8);
+    expect(findOverlaps(items(), st().project.settings)).toEqual([]);
+    st().moveItem(b, 150, 60);
+    st().stackOnBelow(b);
+    expect('z' in items()[1]).toBe(false);
+    expect(a).not.toBe(b);
+  });
+
+  it('duplicateItemStacked puts a copy on top: same x/y, z = top − engagement, level label', () => {
+    const id = st().addItem('fake');
+    const copyId = st().duplicateItemStacked(id)!;
+    const copy = items()[1];
+    expect(copy).toMatchObject({ id: copyId, x: items()[0].x, y: items()[0].y, z: 10, label: 'Tray 1 (level 2)' });
+    expect(st().selectedId).toBe(copyId);
+    const third = st().duplicateItemStacked(copyId)!;
+    expect(items().find((i) => i.id === third)).toMatchObject({ z: 20, label: 'Tray 1 (level 3)' });
+    // With engagement the copy sinks into the source.
+    st().updateItem(third, { params: { ...items()[2].params, e: 2 } });
+    st().stackOnBelow(third);
+    expect(items()[2].z).toBe(18);
+    const fourth = st().duplicateItemStacked(third)!;
+    expect(items().find((i) => i.id === fourth)?.z).toBe(26);
+    expect(findOverlaps(items(), st().project.settings)).toEqual([]);
+    expect(unsupportedItems(items(), st().project.settings)).toEqual([]);
+    // A plain duplicate goes back to the floor level.
+    const flat = st().duplicateItem(copyId)!;
+    expect('z' in items().find((i) => i.id === flat)!).toBe(false);
   });
 });

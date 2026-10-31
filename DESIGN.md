@@ -52,12 +52,23 @@ Project
  └ items: PlacedItem[]
      ├ id, type (box type id), label
      ├ x, y, rotation (0 | 90)
+     ├ z?                                   bottom elevation in mm (undefined → 0)
      ├ wall?, floor?                        per‑item overrides (undefined → project default)
      └ params: Record<string, number|boolean|string>   type‑specific parameters
 ```
 
 `resolveItem(item, settings)` (in `src/model/resolve.ts`) merges defaults and
 parameter defaults into a `ResolvedItem` that box definitions consume.
+
+**Elevation (`z`).** Items can be stacked. `itemRect` reports `z` and
+`top = z + height`. Two items collide when they overlap in XY *and* in Z, where
+the upper item's effective bottom is `z + engagement` (see §4). `itemsTooTall`
+uses `top`. `unsupportedItems` flags items with `z > 0` whose XY rect is not
+fully covered (exactly, by coordinate compression) by the union of items whose
+`top = z + engagement` (±0.01 mm); `layoutSummary` reports them as
+`kind: 'floating'` warnings. `restingElevation` = max top of XY‑overlapping
+items − engagement (0 if none). `z` does not affect geometry or the exporter's
+dedupe key. Persistence accepts a missing or finite non‑negative `z`.
 
 ## 4. Box type registry (`src/boxes/`)
 
@@ -78,6 +89,19 @@ Conventions for definitions:
   mm); the UI applies translation/rotation. Roles: `cavity`, `divider`, `notch`,
   `solid`.
 
+**Stacking.** `stackEngagement?(item)` returns how many mm of the item's base
+sink into the item below (0/undefined for flat bases); use `engagementOf(def,
+item)`. The cavity types share a *Stacking* parameter group (`common.ts`:
+`stackTop` `none|lip`, `stackBottom` `none|recess|plug`, `lipHeight` 2,
+`plugHeight` 2, `stackClearance` 0.15). The lip is the outer `wall/2` of the
+wall raised by `lipHeight`; the recess is a ring `wall/2 + clearance` wide and
+`lipHeight + clearance` deep cut from the outer bottom edge (engagement =
+`lipHeight`); the plug is an `(inner − 2·clearance)` pad of `plugHeight` under
+the floor (engagement = `plugHeight`, floor at `Z = plugHeight`, the local
+origin stays the lowest point). Footprint height = `plug + floor + inner + lip`.
+They are designed for same‑footprint, same‑wall trays. The `platform` type is
+a plate with optional corner stops (engagement = `stopHeight`).
+
 ### 4.1 Initial standard box set (v1 — a starting point we will iterate on)
 
 | id             | Purpose                                     | Key params |
@@ -86,6 +110,7 @@ Conventions for definitions:
 | `divided-tray` | Tray with an N×M grid of compartments       | innerWidth/Depth/Height, columns, rows, dividerThickness, dividerHeight |
 | `card-tray`    | Holder for a card stack                     | cardWidth, cardHeight, clearance, stackHeight, orientation (`flat`/`upright`), exposedHeight (upright), notchWidth |
 | `spacer`       | Solid filler block to take up slack         | width, depth, height |
+| `platform`     | Plate bridging trays to carry the next level | width, depth, thickness, cornerStops, stopSize, stopHeight, stopInset |
 
 Finger notches are rounded slots (a box plus a cylinder at the bottom of the
 cut) subtracted from the wall, centred on the wall, `notchWidth` wide and
@@ -110,7 +135,7 @@ Three‑pane layout:
 2. **Centre — top view** (SVG): game box outline, usable area (tolerance
    band hatched), placed items with their top‑view features, labels and
    dimensions. Drag to move, `R` to rotate, `Delete` to remove, `Ctrl+D`
-   duplicate, `Ctrl+Z/Y` undo/redo. Snapping to the grid, to the usable‑area
+   duplicate, `Ctrl+Shift+D` duplicate on top (stacked), `Ctrl+Z/Y` undo/redo. Snapping to the grid, to the usable‑area
    edges and to neighbouring item edges. Overlapping items, items outside the
    usable area and items taller than the box are highlighted and listed in a
    validation panel.
@@ -139,8 +164,9 @@ items vs usable area), total item count, validation summary.
 * `src/preview/AssemblyView.tsx` — "Assembly" tab: the whole game box as a
   translucent shell with every item placed from the layout. One mesh per unique
   geometry (exporter's `geometryKey`) in a shared LRU cache; moves and rotations
-  only update transforms. Items taller than the box are tinted red, overlapping
-  or out‑of‑area items orange. Note: the scene root is mirrored in Y
+  only update transforms (including the `z` elevation). Items whose top is above
+  the box are tinted red, overlapping / intersecting or out‑of‑area items
+  orange, floating (unsupported) stacked items light blue. Note: the scene root is mirrored in Y
   (`scale(1,-1,1)`) so the view reads like the top view (x right, y down); this
   mirrors chiral geometry, which is invisible for the current symmetric boxes.
 * `src/geometry/scadKernel.ts` — a second `GeometryKernel` that records calls

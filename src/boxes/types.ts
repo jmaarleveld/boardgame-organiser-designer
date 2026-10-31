@@ -71,6 +71,19 @@ export interface BoxTypeDefinition {
    * (e.g. notch wider than wall). Empty array = fine.
    */
   validate?(item: ResolvedItem): string[];
+  /**
+   * How many mm of this item's base sink into the item it is stacked on
+   * (lip recess, floor plug, corner stops). 0 / undefined for flat bases.
+   * The item rests at z = top of the item below − engagement.
+   */
+  stackEngagement?(item: ResolvedItem): number;
+}
+
+/** Stack engagement of an item, never negative or NaN. */
+export function engagementOf(def: BoxTypeDefinition | undefined, item: ResolvedItem): number {
+  if (!def?.stackEngagement) return 0;
+  const e = def.stackEngagement(item);
+  return Number.isFinite(e) && e > 0 ? e : 0;
 }
 
 export function defaultParams(def: BoxTypeDefinition): ItemParams {

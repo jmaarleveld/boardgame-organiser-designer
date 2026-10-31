@@ -4,11 +4,12 @@ import { tray } from './definitions/tray';
 import { dividedTray } from './definitions/divided-tray';
 import { cardTray } from './definitions/card-tray';
 import { spacer } from './definitions/spacer';
+import { platform } from './definitions/platform';
 
-export { tray, dividedTray, cardTray, spacer };
+export { tray, dividedTray, cardTray, spacer, platform };
 
 /** All standard box types, in palette order. */
-export const standardBoxTypes: readonly BoxTypeDefinition[] = [tray, dividedTray, cardTray, spacer];
+export const standardBoxTypes: readonly BoxTypeDefinition[] = [tray, dividedTray, cardTray, spacer, platform];
 
 /** Register every standard box type. Idempotent: already registered ids are skipped. */
 export function registerAllBoxTypes(): void {

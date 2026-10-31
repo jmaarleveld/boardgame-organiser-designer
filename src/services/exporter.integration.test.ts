@@ -7,7 +7,7 @@ import JSZip from 'jszip';
 import { createKernel } from '../geometry/kernel';
 import { registerAllBoxTypes } from '../boxes';
 import { sampleProject } from '../boxes/sample';
-import { createExporter } from './exporter';
+import { createExporter, geometryKey } from './exporter';
 
 registerAllBoxTypes();
 
@@ -41,7 +41,10 @@ describe('exporter with real kernel', () => {
     const names = Object.keys(zip.files).sort();
     const stls = names.filter((n) => n.endsWith('.stl'));
     expect(names).toContain('manifest.txt');
-    expect(stls).toHaveLength(project.items.length); // all sample items are distinct
+    // One file per distinct geometry (the stacking demo reuses the plain tray).
+    const distinct = new Set(project.items.map((i) => geometryKey(project, i))).size;
+    expect(distinct).toBeLessThan(project.items.length);
+    expect(stls).toHaveLength(distinct);
     for (const name of stls) {
       checkBinaryStl(await zip.file(name)!.async('uint8array'));
     }
@@ -71,12 +74,14 @@ describe('exporter with real kernel', () => {
 
   it('dedupes identical items and builds single items / preview meshes', async () => {
     const project = sampleProject();
-    const copy = { ...project.items[0], id: 'copy', label: 'Tokens copy', x: 200, y: 200 };
+    const before = new Set(project.items.map((i) => geometryKey(project, i))).size;
+    const divided = project.items.find((i) => i.id === 'sample-divided')!;
+    const copy = { ...divided, id: 'copy', label: 'Resources copy', x: 200, y: 200 };
     project.items.push(copy);
     const zip = await JSZip.loadAsync(await (await exporter.exportAll(project)).arrayBuffer());
     const stls = Object.keys(zip.files).filter((n) => n.endsWith('.stl'));
-    expect(stls).toHaveLength(project.items.length - 1);
-    expect(stls.some((n) => /_x2\.stl$/.test(n))).toBe(true);
+    expect(stls).toHaveLength(before);
+    expect(stls.some((n) => /Resources_x2\.stl$/.test(n))).toBe(true);
 
     const entry = await exporter.exportItem(project, 'sample-divided');
     checkBinaryStl(entry.stl);

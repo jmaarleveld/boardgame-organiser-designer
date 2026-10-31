@@ -6,7 +6,7 @@
  */
 import type { PlacedItem, ProjectSettings } from '../model/types';
 import type { LayoutSummary } from '../model/layout';
-import { EPS, errorItemIds, safeItemRect } from '../model/layout';
+import { EPS, errorItemIds, floatingItemIds, safeItemRect } from '../model/layout';
 
 /** Unrotated outer size of an item (its mesh's local extent). Never throws. */
 export function localSize(item: PlacedItem, settings: ProjectSettings): { width: number; depth: number; height: number; broken: boolean } {
@@ -24,20 +24,22 @@ export function localSize(item: PlacedItem, settings: ProjectSettings): { width:
  * Column‑major 4×4 matrix (three.js `Matrix4.fromArray` order) mapping the
  * item's local frame into the game box frame.
  *
- * rotation 0:  p' = p + (x, y, 0)
- * rotation 90: p' = Rz(+90°)·p + (x + d, y, 0)
+ * rotation 0:  p' = p + (x, y, z)
+ * rotation 90: p' = Rz(+90°)·p + (x + d, y, z)
  *   Rz(+90°) maps (u, v) → (−v, u), so the local footprint [0,w]×[0,d]
  *   becomes [−d,0]×[0,w]; shifting by +d in x lands it on
  *   [x, x+d]×[y, y+w], which is exactly itemRect (width/depth swapped).
  *
- * `localDepth` is the unrotated depth `d` of the item.
+ * `localDepth` is the unrotated depth `d` of the item; `z` (default 0) is the
+ * item's bottom elevation.
  */
-export function placementMatrix(item: Pick<PlacedItem, 'x' | 'y' | 'rotation'>, localDepth: number): number[] {
+export function placementMatrix(item: Pick<PlacedItem, 'x' | 'y' | 'rotation' | 'z'>, localDepth: number): number[] {
+  const z = typeof item.z === 'number' && Number.isFinite(item.z) && item.z > 0 ? item.z : 0;
   if (item.rotation === 90) {
     // col0 = Rz·ex = (0,1,0), col1 = Rz·ey = (−1,0,0), col2 = ez, col3 = translation
-    return [0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, item.x + localDepth, item.y, 0, 1];
+    return [0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1, 0, item.x + localDepth, item.y, z, 1];
   }
-  return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, item.x, item.y, 0, 1];
+  return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, item.x, item.y, z, 1];
 }
 
 /** Apply a column‑major 4×4 matrix to a point. */
@@ -52,8 +54,12 @@ export function applyMatrix(m: number[], p: [number, number, number]): [number, 
 
 /* ---------------------------------------------------------------- colours */
 
-/** 'tall' = sticks out of the box; 'problem' = other error (overlap, outside usable area, broken). */
-export type ItemTint = 'normal' | 'problem' | 'tall';
+/**
+ * 'tall' = sticks out of the box; 'problem' = other error (overlap,
+ * intersection, outside usable area, broken); 'floating' = stacked item not
+ * fully supported by the items below.
+ */
+export type ItemTint = 'normal' | 'problem' | 'tall' | 'floating';
 
 export function classifyItems(
   items: PlacedItem[],
@@ -61,11 +67,13 @@ export function classifyItems(
   summary: LayoutSummary,
 ): Map<string, ItemTint> {
   const errors = errorItemIds(summary);
+  const floating = floatingItemIds(summary);
   const out = new Map<string, ItemTint>();
   for (const item of items) {
-    const h = safeItemRect(item, settings).height;
-    if (h > settings.box.height + EPS) out.set(item.id, 'tall');
+    const top = safeItemRect(item, settings).top;
+    if (top > settings.box.height + EPS) out.set(item.id, 'tall');
     else if (errors.has(item.id)) out.set(item.id, 'problem');
+    else if (floating.has(item.id)) out.set(item.id, 'floating');
     else out.set(item.id, 'normal');
   }
   return out;

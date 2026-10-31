@@ -70,6 +70,7 @@ export function validateProject(data: unknown): Project {
       rotation: it.rotation,
       params: params as PlacedItem['params'],
     };
+    if (it.z !== undefined) out.z = num(it.z, `${p}.z`, { nonNegative: true });
     if (it.wall !== undefined) out.wall = num(it.wall, `${p}.wall`, { positive: true });
     if (it.floor !== undefined) out.floor = num(it.floor, `${p}.floor`, { positive: true });
     return out;

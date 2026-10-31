@@ -4,9 +4,10 @@ import type { GeometryKernel } from '../geometry/types';
 import type { ItemParams, ResolvedItem } from '../model/types';
 import { resolveItem, placedFootprint } from '../model/resolve';
 import { getBoxType, listBoxTypes } from './registry';
-import { defaultParams, type BoxTypeDefinition } from './types';
-import { registerAllBoxTypes, standardBoxTypes, tray, dividedTray, cardTray, spacer } from './index';
+import { defaultParams, engagementOf, type BoxTypeDefinition } from './types';
+import { registerAllBoxTypes, standardBoxTypes, tray, dividedTray, cardTray, spacer, platform } from './index';
 import { sampleProject } from './sample';
+import { layoutSummary } from '../model/layout';
 
 let k: GeometryKernel;
 beforeAll(async () => {
@@ -35,8 +36,8 @@ function expectFootprintMatchesSolid(def: BoxTypeDefinition, it: ResolvedItem) {
 }
 
 describe('registry', () => {
-  it('registers all four types once', () => {
-    expect(listBoxTypes().map((d) => d.id).sort()).toEqual(['card-tray', 'divided-tray', 'spacer', 'tray']);
+  it('registers all five types once', () => {
+    expect(listBoxTypes().map((d) => d.id).sort()).toEqual(['card-tray', 'divided-tray', 'platform', 'spacer', 'tray']);
     expect(getBoxType('tray')).toBe(tray);
   });
 });
@@ -179,13 +180,145 @@ describe('spacer', () => {
   });
 });
 
+describe('stacking (lip / recess / plug)', () => {
+  const W = 63.2;
+  const D = 43.2;
+  /** Area of the lip ring: outer rect minus the rect inset by wall/2. */
+  const lipRing = W * D - (W - WALL) * (D - WALL);
+  const plain = () => k.volume(tray.build(item(tray, { fingerNotch: false }), k));
+
+  it('defaults are flat with no engagement', () => {
+    const it = item(tray);
+    expect(it.params).toMatchObject({ stackTop: 'none', stackBottom: 'none', lipHeight: 2, plugHeight: 2, stackClearance: 0.15 });
+    expect(engagementOf(tray, it)).toBe(0);
+    for (const def of [tray, dividedTray, cardTray]) {
+      expect(def.params.filter((p) => p.group === 'Stacking').map((p) => p.key)).toEqual([
+        'stackTop',
+        'stackBottom',
+        'lipHeight',
+        'plugHeight',
+        'stackClearance',
+      ]);
+    }
+  });
+
+  it('lip adds ring area × lipHeight and raises the footprint', () => {
+    const it = item(tray, { fingerNotch: false, stackTop: 'lip' });
+    expect(tray.footprint(it).height).toBeCloseTo(FLOOR + 30 + 2, 9);
+    const s = expectFootprintMatchesSolid(tray, it);
+    expect(k.volume(s) - plain()).toBeCloseTo(lipRing * 2, 3);
+    expect(tray.validate!(it)).toEqual([]);
+  });
+
+  it('recess removes ring area × depth; engagement = lipHeight', () => {
+    const it = item(tray, { fingerNotch: false, stackBottom: 'recess' });
+    const r = WALL / 2 + 0.15;
+    const ring = W * D - (W - 2 * r) * (D - 2 * r);
+    const s = expectFootprintMatchesSolid(tray, it);
+    expect(plain() - k.volume(s)).toBeCloseTo(ring * (2 + 0.15), 3);
+    expect(engagementOf(tray, it)).toBeCloseTo(2, 9);
+    expect(tray.validate!(it)).toEqual([]);
+    expect(tray.validate!(item(tray, { stackBottom: 'recess' }, 1.0)).join()).toMatch(/Recess leaves only/);
+  });
+
+  it('plug adds the pad volume, floor at Z = plugHeight; engagement = plugHeight', () => {
+    const it = item(tray, { fingerNotch: false, stackBottom: 'plug' });
+    expect(tray.footprint(it).height).toBeCloseTo(2 + FLOOR + 30, 9);
+    const s = expectFootprintMatchesSolid(tray, it);
+    const pad = (60 - 0.3) * (40 - 0.3) * 2;
+    expect(k.volume(s) - plain()).toBeCloseTo(pad, 3);
+    expect(engagementOf(tray, it)).toBe(2);
+  });
+
+  it('a recessed tray sits on a lipped tray of the same footprint without intersecting', () => {
+    const lower = item(tray, { stackTop: 'lip' });
+    const upper = item(tray, { stackBottom: 'recess' });
+    const lowerSolid = tray.build(lower, k);
+    const z = tray.footprint(lower).height - engagementOf(tray, upper);
+    const upperSolid = k.translate(tray.build(upper, k), [0, 0, z]);
+    expect(k.volume(k.intersection([lowerSolid, upperSolid]))).toBeLessThan(1e-6);
+    // and they really engage: lifting the upper less than the lip collides.
+    const sunk = k.translate(tray.build(upper, k), [0, 0, z - 0.5]);
+    expect(k.volume(k.intersection([lowerSolid, sunk]))).toBeGreaterThan(1);
+  });
+
+  it('a plugged tray drops into a same-footprint tray below without intersecting', () => {
+    const lower = item(tray);
+    const upper = item(tray, { stackBottom: 'plug' });
+    const z = tray.footprint(lower).height - engagementOf(tray, upper);
+    const upperSolid = k.translate(tray.build(upper, k), [0, 0, z]);
+    expect(k.volume(k.intersection([tray.build(lower, k), upperSolid]))).toBeLessThan(1e-6);
+  });
+
+  it('finger notches cut through the lip', () => {
+    const noNotch = k.volume(tray.build(item(tray, { fingerNotch: false, stackTop: 'lip' }), k));
+    const notched = k.volume(tray.build(item(tray, { stackTop: 'lip' }), k));
+    const notchedPlain = k.volume(tray.build(item(tray), k));
+    // The notch removes the same wall material as without lip, plus the lip slot (20 wide, wall/2 thick, 2 high) ×2.
+    expect(noNotch - notched - (plain() - notchedPlain)).toBeCloseTo(2 * 20 * (WALL / 2) * 2, 2);
+  });
+
+  it('divided and card trays support the same stacking features', () => {
+    for (const [def, params] of [
+      [dividedTray, { fingerNotch: true }],
+      [cardTray, {}],
+      [cardTray, { orientation: 'upright' }],
+    ] as const) {
+      const variants: ItemParams[] = [{ stackTop: 'lip' }, { stackBottom: 'recess' }, { stackBottom: 'plug' }, { stackTop: 'lip', stackBottom: 'plug' }];
+      for (const st of variants) {
+        const it = item(def, { ...params, ...st });
+        expectFootprintMatchesSolid(def, it);
+        expect(def.validate!(it)).toEqual([]);
+      }
+    }
+  });
+});
+
+describe('platform', () => {
+  it('plate on four corner stops', () => {
+    const it = item(platform);
+    expect(platform.footprint(it)).toEqual({ width: 100, depth: 100, height: 4 });
+    const s = expectFootprintMatchesSolid(platform, it);
+    expect(k.volume(s)).toBeCloseTo(100 * 100 * 2 + 4 * 6 * 6 * 2, 3);
+    expect(engagementOf(platform, it)).toBe(2);
+    const feats = platform.draw(it);
+    expect(feats.filter((f) => f.kind === 'rect' && f.role === 'solid')).toHaveLength(1);
+    const stops = feats.filter((f) => f.kind === 'rect' && f.role === 'divider');
+    expect(stops).toHaveLength(4);
+    expect(stops[0]).toMatchObject({ x: 1.75, y: 1.75, w: 6, h: 6 });
+  });
+
+  it('without stops it is a flat plate with no engagement', () => {
+    const it = item(platform, { cornerStops: false });
+    expect(platform.footprint(it).height).toBe(2);
+    expect(k.volume(expectFootprintMatchesSolid(platform, it))).toBeCloseTo(20000, 6);
+    expect(engagementOf(platform, it)).toBe(0);
+    expect(platform.draw(it)).toHaveLength(1);
+  });
+
+  it('corner stops drop inside the cavity of a same-footprint tray', () => {
+    const lower = item(tray, { fingerNotch: false, innerWidth: 96.8, innerDepth: 96.8 });
+    expect(tray.footprint(lower).width).toBeCloseTo(100, 9);
+    const p = item(platform);
+    const z = tray.footprint(lower).height - engagementOf(platform, p);
+    const plate = k.translate(platform.build(p, k), [0, 0, z]);
+    expect(k.volume(k.intersection([tray.build(lower, k), plate]))).toBeLessThan(1e-6);
+  });
+
+  it('validates', () => {
+    expect(platform.validate!(item(platform))).toEqual([]);
+    expect(platform.validate!(item(platform, { width: 10 })).join()).toMatch(/do not fit/);
+    expect(platform.validate!(item(platform, { thickness: 0 }))).not.toEqual([]);
+  });
+});
+
 describe('sample project', () => {
-  it('fits in the usable area without overlaps and builds', () => {
+  it('fits in the usable area without overlaps or issues and builds', () => {
     const p = sampleProject();
     const { box, tolerance } = p.settings;
-    const rects = p.items.map((i) => {
+    for (const i of p.items) {
       const fp = placedFootprint(i, p.settings);
-      expect(fp.height).toBeLessThanOrEqual(box.height);
+      expect((i.z ?? 0) + fp.height).toBeLessThanOrEqual(box.height);
       expect(i.x).toBeGreaterThanOrEqual(tolerance.x / 2);
       expect(i.y).toBeGreaterThanOrEqual(tolerance.y / 2);
       expect(i.x + fp.width).toBeLessThanOrEqual(box.width - tolerance.x / 2);
@@ -194,15 +327,24 @@ describe('sample project', () => {
       const def = getBoxType(i.type);
       expect(def.validate?.(r) ?? []).toEqual([]);
       expect(k.isValid(def.build(r, k))).toBe(true);
-      return { x0: i.x, y0: i.y, x1: i.x + fp.width, y1: i.y + fp.depth };
+    }
+    expect(new Set(p.items.map((i) => i.type)).size).toBe(5);
+    const summary = layoutSummary(p.items, p.settings);
+    expect(summary.issues).toEqual([]);
+    // It demonstrates stacking.
+    expect(p.items.filter((i) => (i.z ?? 0) > 0).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('stacked sample items do not intersect in 3D', () => {
+    const p = sampleProject();
+    const placed = p.items.map((i) => {
+      const s = getBoxType(i.type).build(resolveItem(i, p.settings), k);
+      return { id: i.id, solid: k.translate(s, [i.x, i.y, i.z ?? 0]) };
     });
-    expect(new Set(p.items.map((i) => i.type)).size).toBe(4);
-    for (let a = 0; a < rects.length; a++) {
-      for (let b = a + 1; b < rects.length; b++) {
-        const A = rects[a];
-        const B = rects[b];
-        const overlap = A.x0 < B.x1 && B.x0 < A.x1 && A.y0 < B.y1 && B.y0 < A.y1;
-        expect(overlap).toBe(false);
+    for (let a = 0; a < placed.length; a++) {
+      for (let b = a + 1; b < placed.length; b++) {
+        const v = k.volume(k.intersection([placed[a].solid, placed[b].solid]));
+        expect(v, `${placed[a].id} ∩ ${placed[b].id}`).toBeLessThan(1e-6);
       }
     }
   });

@@ -1,7 +1,23 @@
 import type { BoxTypeDefinition, TopViewFeature } from '../types';
 import type { ResolvedItem } from '../../model/types';
 import type { Solid } from '../../geometry/types';
-import { bool, EPS, notchCutter, notchRect, num, openBox, requirePositive, validateNotch, type NotchSpec } from './common';
+import {
+  bool,
+  EPS,
+  notchCutter,
+  notchRect,
+  num,
+  requirePositive,
+  stackEngagement,
+  stackedHeight,
+  stackedOpenBox,
+  stacking,
+  stackingParams,
+  stackNotches,
+  validateNotch,
+  validateStacking,
+  type NotchSpec,
+} from './common';
 
 /**
  * Layout of a divided tray. Columns split along X (dividers parallel to Y),
@@ -30,6 +46,7 @@ function layout(item: ResolvedItem) {
     notch: bool(item, 'fingerNotch'),
     nw: num(item, 'notchWidth'),
     nd: num(item, 'notchDepth'),
+    stack: stacking(item),
   };
 }
 
@@ -53,7 +70,7 @@ function notches(item: ResolvedItem): NotchSpec[] {
       out.push({ ...base, wallPos: L.colX(i), thickness: L.t, top: divTop, depth: Math.min(L.nd, L.dh) });
     }
   }
-  return out;
+  return stackNotches(out, L.stack);
 }
 
 export const dividedTray: BoxTypeDefinition = {
@@ -111,19 +128,20 @@ export const dividedTray: BoxTypeDefinition = {
       group: 'Finger notch',
       visibleIf: (p) => p.fingerNotch === true,
     },
+    ...stackingParams,
   ],
 
   footprint(item) {
     const L = layout(item);
-    return { width: L.iw + 2 * L.wall, depth: L.id + 2 * L.wall, height: L.ih + L.floor };
+    return { width: L.iw + 2 * L.wall, depth: L.id + 2 * L.wall, height: stackedHeight(L.ih, L.floor, L.stack) };
   },
 
   build(item, kernel) {
     const L = layout(item);
-    const body = openBox(kernel, L.iw, L.id, L.ih, L.wall, L.floor);
+    const body = stackedOpenBox(kernel, L.iw, L.id, L.ih, L.wall, L.floor, L.stack);
     const dividers: Solid[] = [];
     // Dividers overlap the floor and walls by EPS so the union is clean.
-    const z0 = L.floor - EPS;
+    const z0 = L.stack.plugH + L.floor - EPS;
     const h = L.dh + EPS;
     for (let i = 1; i < L.cols; i++) {
       dividers.push(kernel.box(L.t, L.id + 2 * EPS, h, [L.colX(i), L.wall - EPS, z0]));
@@ -193,6 +211,9 @@ export const dividedTray: BoxTypeDefinition = {
     if (L.notch && L.cd > 0) {
       validateNotch(problems, L.nw, L.nd, L.cd, L.ih, 'compartment side');
     }
+    validateStacking(problems, L.stack, L.wall, L.floor, L.iw, L.id, L.ih);
     return problems;
   },
+
+  stackEngagement,
 };

@@ -129,7 +129,8 @@ export default function App({ services, onRetryKernel }: AppProps) {
       }
       if (mod && key === 'd') {
         e.preventDefault();
-        s.duplicateItem(sel.id);
+        if (e.shiftKey) s.duplicateItemStacked(sel.id);
+        else s.duplicateItem(sel.id);
         return;
       }
       if (mod || e.altKey) return;
