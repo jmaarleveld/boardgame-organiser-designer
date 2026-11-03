@@ -157,7 +157,9 @@ Solid filler block to take up leftover space. Wall and floor settings are ignore
 
 Flat plate that spans several trays and carries the next level. Optional corner
 stops are four small blocks under the plate that drop just inside the cavities
-of the trays below and keep it from sliding. Wall and floor settings are ignored.
+of the trays below and keep it from sliding. Optional locating ridges on top
+lock the smaller organizers that rest on it (see Stacking). Wall and floor
+settings are ignored.
 
 | Parameter | Default | Meaning |
 |---|---|---|
@@ -168,6 +170,7 @@ of the trays below and keep it from sliding. Wall and floor settings are ignored
 | `stopSize` | 6 | Side of each square stop |
 | `stopHeight` | 2 | Height of the stops below the plate (= how far the platform sinks into the trays below) |
 | `stopInset` | 1.75 | Distance of the stops from the plate edge; use the wall + clearance of the trays below |
+| `locateItems` | true | *Locate items on top*: add a locating ridge for every item with a recessed base that rests on the plate. The outer height grows by the tallest ridge (only when there are ridges). |
 
 ## Stacking
 
@@ -186,6 +189,10 @@ Items can sit on top of other items, not only on the game box floor.
   must be covered by items whose tops are exactly at its base (within 0.01 mm).
   Otherwise it is listed as *Floating* (a warning, light blue in the assembly
   view). An item whose base lies inside another item's body is an error.
+* **Stack fit check.** The support check looks at footprints; the fit check
+  looks at what the item really stands on (see *Stack fit* below): open trays
+  only carry on their walls, a lip must drop into a recess, a plug needs an
+  empty cavity, and standing cards need free space above them.
 * **Level filter.** When the layout has more than one level, a *Show up to*
   menu appears next to the zoom buttons of the top view. Pick a level to hide the
   items stacked above it so you can edit the lower ones. Elevated items have a
@@ -195,22 +202,108 @@ Stacking features of the boxes: tray, divided tray and card tray all have a
 *Stacking* parameter group. These features are made for **trays with the same
 footprint and the same wall thickness** stacked directly on top of each other.
 
+**Lip + recess is the standard.** A tray, divided tray or card tray you add
+from the palette starts with `stackTop: lip` and `stackBottom: recess`, so any
+two new trays of the same footprint lock onto each other. Switch them to *Flat*
+if you don't want it. The parameter defaults below stay `none`: projects saved
+before this change, and the sample, keep exactly their geometry. Duplicates
+copy their source's settings.
+
+**Plug is a retrofit.** Use *Plug (retrofit onto a plain tray)* only to stack a
+new tray onto a tray that is already printed without a lip. The plug drops into
+the lower tray's cavity, so that cavity must be empty (it collides with the
+dividers of a divided tray) and the plug takes `plugHeight` of its height.
+
 | Parameter | Default | Meaning |
 |---|---|---|
-| `stackTop` | `none` | `lip`: the outer half of the wall (`wall/2`) rises `lipHeight` above the wall top. The outer height grows by `lipHeight`. |
-| `stackBottom` | `none` | `recess`: a ring `wall/2 + stackClearance` wide and `lipHeight + stackClearance` deep is cut from the outer bottom edge, so the tray sits on a `lip` tray below. `plug`: a solid pad `(inner − 2·stackClearance)` × `plugHeight` under the floor drops into the cavity below. The outer height grows by `plugHeight`. |
+| `stackTop` | `none` (new items: `lip`) | `lip`: the outer half of the wall (`wall/2`) rises `lipHeight` above the wall top. The outer height grows by `lipHeight`. |
+| `stackBottom` | `none` (new items: `recess`) | `recess`: a ring `wall/2 + stackClearance` wide and `lipHeight + stackClearance` deep is cut from the outer bottom edge, so the tray sits on a `lip` tray below. `plug` (retrofit): a solid pad `(inner − 2·stackClearance)` × `plugHeight` under the floor drops into the cavity below. The outer height grows by `plugHeight`. |
 | `lipHeight` | 2 | Height of the lip, and of the lip a recessed base receives |
 | `plugHeight` | 2 | Height of the plug |
 | `stackClearance` | 0.15 | Gap around a recess or plug |
 
 How far a base sinks into the item below (its *engagement*) is `lipHeight` for
-a recess (the inner half of the wall rests on the lower wall; the extra
-clearance stays as a gap above the lip), `plugHeight` for a plug and
-`stopHeight` for a platform with corner stops. *Rest on items below* and
+a recess on a tray with a lip (the inner half of the wall rests on the lower
+wall; the extra clearance stays as a gap above the lip), 0 for a recess on
+anything else (a plain tray, platform or spacer: it simply rests on top),
+`plugHeight` for a plug and `stopHeight` for a platform with corner stops. An
+item resting on several items sits on the highest effective surface (top −
+engagement on that item); it counts as supported only by the items that meet
+it there. *Rest on items below* and
 *Duplicate on top* take this into account. A recess needs at least 0.4 mm of
 wall left next to it (`wall/2 − stackClearance ≥ 0.4`). Finger notches cut
 through the lip. A plug needs an empty cavity below: it collides with the
 dividers of a divided tray.
+
+**Platform locating ridges.** A platform with *Locate items on top* (on by
+default) gets a ridge for every item resting on its plate whose base is a
+`recess`: a ring along that item's outer footprint edge, `wall/2` of *that
+item's* wall wide and its `lipHeight` high, standing on the plate — the same
+shape as a tray's lip, so the recess drops over it. Ridges are clipped to the
+plate, and the ridges of items placed edge to edge merge. Items without a
+recess get no ridge. Several smaller organizers of different types can so be
+locked on one platform. Everything on the platform still rests on the plate:
+the platform's top is the top of its ridges, and its engagement for anything on
+it is the ridge height (`lipHeight` when all ridged items use the same lip), so
+*Rest on items below* puts the items on the plate and the support check accepts
+them. With the option off, ridges are left out and items rest on the flat plate.
+An item counts as resting on the platform when it overlaps it in the top view
+and its `z` is the plate top (within 0.01 mm).
+
+The platform's geometry is based on the items on it: moving, resizing or
+changing those items changes the platform and means **reprinting it**. The
+inspector lists the items a selected platform's ridges are based on, and the
+item preview, the assembly view and the export rebuild the platform as soon as
+they change (the OpenSCAD file lists them as "Based on: …").
+
+### Stack fit
+
+Every item with `z > 0` that rests on something is checked against the items
+it rests on (its *supporters*: those whose top − engagement is its `z`).
+
+* **Bearing areas.** Each box type says which parts of its top can carry
+  something. Tray and card tray: the wall ring. With a lip, the lip ring (outer
+  half of the wall, at the lip top) and the inner half of the wall (at the wall
+  top): a recessed tray rests on the inner half while the lip sits in its
+  recess. Divided tray: walls plus the dividers that reach the wall top
+  (`dividerHeight` 0 or ≥ inner height); lower dividers carry nothing. Platform:
+  the whole plate (its ridges are lips). Spacer, and any type without the hook:
+  the whole top.
+* **Bearing rule.** The contact area is the item's footprint ∩ the bearing
+  areas of its supporters at its base height (from `z` up to `z` + its own
+  engagement). No contact at all: **error** "rests on nothing: it hangs over
+  the open cavity of …". Contact whose convex hull does not contain the item's
+  footprint centre with a margin of 10 % of the item's smaller side
+  (`TIP_MARGIN_FRACTION`): **warning** "may tip" (light blue in the assembly
+  view, like *Floating*). An item gets one support message: "rests on
+  nothing", else "may tip", else *Floating*. So: strips side by side across a
+  big tray, each reaching the front and back walls, are fine; a 2 × 2 grid of
+  trays on one big tray gives four warnings (each rests on an L of two walls);
+  the middle tray of a 3 × 3 grid rests on nothing.
+* **Lip and recess.** Nothing of a supporter may reach above the item's base:
+  the base is at `z` + the tallest protrusion, raised by the recess depth under
+  the recess ring, and at `z` under a protrusion. A lip (or platform ridge)
+  under the item's recess ring fits; a lip under its floor (e.g. one wide
+  recessed tray across two lip trays) is an **error**. A recess edge that sits
+  on a wall without a lip is fine.
+* **Plug and corner stops.** A plug pad (`inner − 2·clearance`, `plugHeight`
+  deep) or a platform's corner stops must drop into an open cavity: an
+  **error** when they hit walls or dividers that reach higher than the pad's
+  bottom (a plug on a divided tray), or a solid top (a plug on a spacer or a
+  platform). The engagement stays `plugHeight` on anything, so *Rest on items
+  below* sinks the plug and the check reports the collision.
+* **Keep‑out space.** An upright card tray keeps the space above its cavity
+  free up to where the cards stick out (`exposedHeight` − lip height above its
+  top). Another item in that space is an **error**, and the "too tall" check
+  uses the top of the cards.
+
+Fit messages name both items and say what to change. A fit error highlights
+the stacked item (and, for a collision, the item it collides with) like any
+other error.
+
+`examples/stacking-demo.json` (open it with *Open*) shows every case, A to S;
+each label ends with what the app reports: `(OK)`, `(warning)`, `(error)`, or
+`(flagged with X)` for a base that is part of X's error.
 
 The sample project shows both mechanisms: a lip tray with a recessed tray on
 top, and a platform on two trays that carries a third tray.
@@ -224,6 +317,14 @@ using `footprint()`, so a new type needs no UI changes.
 1. Create `src/boxes/definitions/<name>.ts` and export a `BoxTypeDefinition`
    implementing `params`, `footprint`, `build`, `draw` and (optionally) `validate`.
    Helpers such as `num`, `openBox` and the notch cutter live in `common.ts`.
+   A type whose geometry depends on the items resting on it (like the
+   platform's ridges) opts in with `usesItemsAbove` and reads `item.context`;
+   see DESIGN.md §4.2.
+   For the stack fit check (DESIGN.md §4.3), a type with an open top should
+   implement `bearingAreas` (without it the whole top counts as solid; the
+   helper `cavityBearingAreas` gives the wall ring), a type with a recess, plug
+   or feet `baseFeatures`, and a type with something sticking out above its top
+   `keepOut`.
 2. Register it in `src/boxes/index.ts`: import it and add it to
    `standardBoxTypes`, which controls palette order.
 3. Add tests to `src/boxes/boxes.test.ts`, following the existing `describe('tray')`

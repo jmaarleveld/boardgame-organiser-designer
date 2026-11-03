@@ -57,8 +57,10 @@ Project
      └ params: Record<string, number|boolean|string>   type‑specific parameters
 ```
 
-`resolveItem(item, settings)` (in `src/model/resolve.ts`) merges defaults and
-parameter defaults into a `ResolvedItem` that box definitions consume.
+`resolveItem(item, settings, items?)` (in `src/model/resolve.ts`) merges
+defaults and parameter defaults into a `ResolvedItem` that box definitions
+consume; given the project's `items` it also attaches the item's build context
+(§4.2).
 
 **Elevation (`z`).** Items can be stacked. `itemRect` reports `z` and
 `top = z + height`. Two items collide when they overlap in XY *and* in Z, where
@@ -66,9 +68,13 @@ the upper item's effective bottom is `z + engagement` (see §4). `itemsTooTall`
 uses `top`. `unsupportedItems` flags items with `z > 0` whose XY rect is not
 fully covered (exactly, by coordinate compression) by the union of items whose
 `top = z + engagement` (±0.01 mm); `layoutSummary` reports them as
-`kind: 'floating'` warnings. `restingElevation` = max top of XY‑overlapping
-items − engagement (0 if none). `z` does not affect geometry or the exporter's
-dedupe key. Persistence accepts a missing or finite non‑negative `z`.
+`kind: 'floating'` warnings (unless the stack fit check already reports
+the item, §4.3). `restingElevation` = max top of XY‑overlapping
+items − engagement (0 if none). An item's own `z` does not affect its geometry
+or the exporter's dedupe key (but the `z` of items resting on a platform with
+locating ridges affects the platform's, §4.2). `itemRect` / `safeItemRect` /
+`placedFootprint` take the project's `items` as an optional last argument so
+context‑dependent heights count; the layout functions always pass them. `itemsTooTall` uses `effectiveTop` (top incl. keep‑out space, §4.3). Persistence accepts a missing or finite non‑negative `z`.
 
 ## 4. Box type registry (`src/boxes/`)
 
@@ -89,17 +95,33 @@ Conventions for definitions:
   mm); the UI applies translation/rotation. Roles: `cavity`, `divider`, `notch`,
   `solid`.
 
-**Stacking.** `stackEngagement?(item)` returns how many mm of the item's base
-sink into the item below (0/undefined for flat bases); use `engagementOf(def,
-item)`. The cavity types share a *Stacking* parameter group (`common.ts`:
+**Stacking.** `stackEngagement?(item, below?)` returns how many mm of the
+item's base sink into `below`, the item it stands on (0/undefined for flat
+bases); use `engagementOf(def, item, below)`. Engagement is per pair: the
+layout (`restingElevation`, `unsupportedItems`, the overlap/intersection
+checks) and *Duplicate on top* always pass `below`; without it the nominal
+engagement against a matching partner is returned. An item on several items
+rests at max over them of `top − engagement(item on it)` and is supported by
+those that meet that z (within `SUPPORT_TOL`). The cavity types share a *Stacking* parameter group (`common.ts`:
 `stackTop` `none|lip`, `stackBottom` `none|recess|plug`, `lipHeight` 2,
 `plugHeight` 2, `stackClearance` 0.15). The lip is the outer `wall/2` of the
 wall raised by `lipHeight`; the recess is a ring `wall/2 + clearance` wide and
 `lipHeight + clearance` deep cut from the outer bottom edge (engagement =
-`lipHeight`); the plug is an `(inner − 2·clearance)` pad of `plugHeight` under
+`lipHeight`, but only on an item whose `stackTop` is `lip`; 0 on anything
+else); the plug (a retrofit for stacking onto an already printed plain tray:
+needs an empty cavity below and takes `plugHeight` of it) is an `(inner − 2·clearance)` pad of `plugHeight` under
 the floor (engagement = `plugHeight`, floor at `Z = plugHeight`, the local
 origin stays the lowest point). Footprint height = `plug + floor + inner + lip`.
-They are designed for same‑footprint, same‑wall trays. The `platform` type is
+They are designed for same‑footprint, same‑wall trays. Lip + recess is the
+standard: the three cavity types set `newItemParams: { stackTop: 'lip',
+stackBottom: 'recess' }`.
+
+**Creation‑time params.** `BoxTypeDefinition.newItemParams?` holds values for
+items newly added from the UI; the store's `addItem` (palette click and
+top‑view drop both go through it) uses `newItemParams(def)` = ParamSpec
+defaults + `def.newItemParams`. Duplicates copy the source, loading a file or
+the sample resolves missing keys against the ParamSpec defaults, so changing
+`newItemParams` never changes existing geometry. The `platform` type is
 a plate with optional corner stops (engagement = `stopHeight`).
 
 ### 4.1 Initial standard box set (v1 — a starting point we will iterate on)
@@ -110,11 +132,115 @@ a plate with optional corner stops (engagement = `stopHeight`).
 | `divided-tray` | Tray with an N×M grid of compartments       | innerWidth/Depth/Height, columns, rows, dividerThickness, dividerHeight |
 | `card-tray`    | Holder for a card stack                     | cardWidth, cardHeight, clearance, stackHeight, orientation (`flat`/`upright`), exposedHeight (upright), notchWidth |
 | `spacer`       | Solid filler block to take up slack         | width, depth, height |
-| `platform`     | Plate bridging trays to carry the next level | width, depth, thickness, cornerStops, stopSize, stopHeight, stopInset |
+| `platform`     | Plate bridging trays to carry the next level | width, depth, thickness, cornerStops, stopSize, stopHeight, stopInset, locateItems |
 
 Finger notches are rounded slots (a box plus a cylinder at the bottom of the
 cut) subtracted from the wall, centred on the wall, `notchWidth` wide and
 `notchDepth` deep from the top edge.
+
+### 4.2 Build context (geometry that depends on other items)
+
+Most boxes are self‑contained: their geometry depends only on their own
+resolved type / wall / floor / params. The platform's locating ridges depend on
+the items resting on it, so the contract has an opt‑in build context:
+
+* `BoxTypeDefinition.usesItemsAbove?(item)` — return true (for the resolved
+  item without context) to receive one. The platform returns `locateItems`.
+* The context is computed in **one place**, `buildContext` in
+  `src/model/resolve.ts`, called by `resolveItem(item, settings, items)`, and
+  stored as `ResolvedItem.context = { itemsAbove: ItemAbove[] }`.
+  `itemsAbove` are the items that overlap the item in XY (strictly) whose `z`
+  equals its **context‑free** top (`z` + footprint height without context,
+  within `SUPPORT_TOL`), each as `{ id, x, y, width, depth, wall,
+  stackBottom, lipHeight }` with the rect in the item's local frame (both
+  rotations applied; at rotation 90 `u = Y − y`, `v = x + d − X`), sorted by
+  id. It only uses context‑free footprints, so there are no cycles.
+* `footprint`, `build` and `draw` may read `item.context` (width and depth must
+  not depend on it). `seatDepth?(item)` says how far below the outer top lies
+  the surface items rest on; the layout adds it to every engagement on that
+  item (`pairEngagement` = own `stackEngagement` + `seatDepth` of the item
+  below). `describeContext?(item)` gives the inspector the ids it is based on
+  and a note.
+* Every consumer that builds, draws, sizes or keys geometry passes the
+  project's items: the layout (`stackRects`, `itemsTooTall`, validation), the
+  store (*Duplicate on top*), the top view, the inspector, the exporter
+  (`buildSolid`, OpenSCAD, manifest) and the assembly view (`localSize`,
+  `classifyItems`). `geometryKey` includes the context (ids dropped, entries
+  sorted), so the export dedupe, the item preview key (`PreviewPane`) and the
+  assembly mesh cache rebuild a platform when an item on it moves or changes,
+  while identical ridged platforms still dedupe.
+
+**Platform ridges.** For every item above with `stackBottom = 'recess'` and
+`lipHeight > 0`: a ring along its outer footprint edge, `wall/2` of its wall
+wide, `lipHeight` high, standing on the plate top (Z = stopHeight +
+thickness), clipped to the plate; rings are unioned, so edge‑to‑edge
+neighbours merge. Outer height = stops + thickness + the tallest ridge (only
+when a ridge exists); `seatDepth` = that ridge height, so everything on the
+plate rests at the plate top (for equal lip heights this is the recess
+engaging `lipHeight`; flat items next to ridged ones rest there too). With
+`locateItems` off there is no context and the platform is a flat plate.
+
+### 4.3 Stack fit check (`stackFit` in `src/model/layout.ts`)
+
+The support check (§3) only compares footprints. The fit check compares the
+base of a stacked item with the top of what it rests on. Three optional hooks,
+all in the item's local unrotated frame (as `draw`); the layout maps them to
+the game box frame in one place, `localToBoxRect` in `src/model/resolve.ts`
+(rotation 90: local `(u, v)` → `(x + d − v, y + u)`, `d` = unrotated depth):
+
+* `bearingAreas?(item): BearingArea[]` — top faces `{ x, y, width, depth,
+  height, role?, name? }`, `height` = local Z of the face. `role`: `bearing`
+  (default), `lip` (a locating lip / ridge: carries a flat base resting on it,
+  must otherwise lie under a recess), `low` (solid, carries nothing). Without
+  the hook (`bearingAreasOf`): the whole footprint at `height − seatDepth`.
+  Tray / card tray (`cavityBearingAreas` in `common.ts`): the wall ring at the
+  wall top; with a lip the lip ring (outer `wall/2`, role `lip`, at the lip top)
+  plus the inner wall half at the wall top. Divided tray: plus every divider at
+  its top, role `low` when `dividerHeight` is below the inner height. Platform:
+  the plate at the plate top plus its ridges (role `lip`). Spacer: the whole top.
+* `baseFeatures?(item): BaseFeature[]` — `{ kind: 'recess' | 'protrusion', x,
+  y, width, depth, height, name }`. Cavity types (`cavityBaseFeatures`): the
+  recess ring (`wall/2 + clearance` wide, `lipHeight + clearance` high) or the
+  plug pad (`inner − 2·clearance`, `plugHeight`). Platform: the corner stops.
+  The item's lowest point is `z`; its main base is at `z + P` (P = tallest
+  protrusion); under a recess the base is that much higher.
+* `keepOut?(item): KeepOut[]` — `{ x, y, width, depth, height, name, fix? }`,
+  space above the outer top that must stay free. Upright card tray: its cavity,
+  `exposedHeight − lipHeight` high.
+
+Rules, for every item with `z > 0` and at least one supporter (`o.top −
+engagement(item on o) = z` within `SUPPORT_TOL`):
+
+1. **Bearing.** Contact = footprint ∩ the supporters' bearing areas (not
+   `low`) whose absolute height is in `[z, z + own engagement on that
+   supporter]` (± `SUPPORT_TOL`; the own engagement excludes the supporter's
+   seat depth). No contact → error `kind: 'stack-fit'` ("rests on nothing").
+   Otherwise the footprint centre must lie inside the convex hull of the
+   contact rects by at least `TIP_MARGIN_FRACTION` (0.1) × the item's smaller
+   side, else warning `kind: 'unstable'` ("may tip"). Per item only one support
+   message: rests on nothing > may tip > floating. Items with no supporter at
+   all keep the plain floating warning.
+2. **Fit.** For every bearing area (any role) of a supporter that overlaps the
+   footprint and rises above `z`: split the overlap by the item's base features
+   (coordinate compression) and compare per cell with the base height there
+   (`z` under a protrusion, `z + P + recess` under a recess, `z + P`
+   elsewhere). Higher → error `kind: 'stack-fit'`, one per (item, supporter,
+   part): a protrusion ("its plug does not fit into …"), a lip / ridge under the
+   floor ("collides with the lips of …"), anything else ("collides with …").
+   This covers lip/recess alignment, plugs on dividers or on solid tops (the
+   plug engagement stays `plugHeight` on anything, so the plug is reported
+   rather than silently lifted), and corner stops on solid tops.
+3. **Keep‑out.** Any other item that overlaps a keep‑out rect in XY and whose
+   Z range intersects `(top, top + height)` → error `kind: 'stack-fit'`
+   (intruder, keeper). `effectiveTop` = max(top, keep‑out tops) is used by
+   "too tall" and by the assembly view's `tall` tint.
+
+`floatingItemIds` returns the stacked item of every `floating` or `unstable`
+issue (light blue in the assembly view); stack‑fit errors are ordinary errors
+(red outline in the top view, orange in the assembly view).
+`examples/stacking-demo.json` exercises every case (A–S); a test checks that
+each item's label suffix — `(OK)`, `(warning)`, `(error)`, `(flagged with X)` —
+matches the summary.
 
 ## 5. Geometry kernel (`src/geometry/kernel.ts`)
 
@@ -157,16 +283,18 @@ items vs usable area), total item count, validation summary.
 * `persistence.ts` — autosave to `localStorage`, JSON import/export with
   validation.
 * `exporter.ts` — builds every item with the kernel, writes binary STLs, dedupes
-  identical items (same type/params/wall/floor) into one file with a count, and
+  identical items (same `geometryKey`: type/params/wall/floor and build
+  context, §4.2) into one file with a count, and
   packs them with a `manifest.txt` into a zip.
 * `download.ts` — trigger a browser download for a Blob.
 * `src/preview/Preview3D.tsx` — three.js viewer for a `MeshData` (single item).
 * `src/preview/AssemblyView.tsx` — "Assembly" tab: the whole game box as a
   translucent shell with every item placed from the layout. One mesh per unique
   geometry (exporter's `geometryKey`) in a shared LRU cache; moves and rotations
-  only update transforms (including the `z` elevation). Items whose top is above
-  the box are tinted red, overlapping / intersecting or out‑of‑area items
-  orange, floating (unsupported) stacked items light blue. Note: the scene root is mirrored in Y
+  only update transforms (including the `z` elevation). Items whose top (incl.
+  standing cards, `effectiveTop`) is above the box are tinted red,
+  overlapping / intersecting / out‑of‑area items and stack‑fit errors orange,
+  floating or "may tip" stacked items light blue. Note: the scene root is mirrored in Y
   (`scale(1,-1,1)`) so the view reads like the top view (x right, y down); this
   mirrors chiral geometry, which is invisible for the current symmetric boxes.
 * `src/geometry/scadKernel.ts` — a second `GeometryKernel` that records calls

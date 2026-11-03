@@ -6,7 +6,7 @@ import { create } from 'zustand';
 import type { ParamValue, PlacedItem, Project, ProjectSettings } from '../model/types';
 import { createEmptyProject } from '../model/types';
 import { getBoxType } from '../boxes/registry';
-import { defaultParams } from '../boxes/types';
+import { newItemParams } from '../boxes/types';
 import type { Rect } from '../model/layout';
 import { itemEngagement, rectInside, rectsOverlap, restingElevation, safeItemRect, usableArea } from '../model/layout';
 
@@ -194,7 +194,7 @@ export const useStore = create<AppState>()((set, get) => {
         x: 0,
         y: 0,
         rotation: 0,
-        params: defaultParams(def),
+        params: newItemParams(def),
       };
       const usable = usableArea(settings);
       const r = rectOf(item, settings);
@@ -316,14 +316,14 @@ export const useStore = create<AppState>()((set, get) => {
       const { settings, items } = get().project;
       const src = items.find((i) => i.id === id);
       if (!src) return null;
-      const r = safeItemRect(src, settings);
+      const r = safeItemRect(src, settings, items);
       const copy: PlacedItem = {
         ...structuredClone(src),
         id: newId(),
         label: stackedLabel(src.label),
       };
-      // The copy has the same type/params, hence the same engagement.
-      const z = Math.max(0, round(r.top - itemEngagement(copy, settings)));
+      // Engagement of the copy on its source (e.g. a recess only sinks into a lip).
+      const z = Math.max(0, round(r.top - itemEngagement(copy, src, settings, items)));
       if (z > 0) copy.z = z;
       else delete copy.z;
       commit((p) => ({ ...p, items: [...p.items, copy] }));

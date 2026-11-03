@@ -16,6 +16,10 @@ import {
   usableArea,
 } from './layout';
 import { fakeBox } from './fakeBox.testutil';
+import { tray } from '../boxes/definitions/tray';
+import { platform } from '../boxes/definitions/platform';
+import { spacer } from '../boxes/definitions/spacer';
+import type { ItemParams } from './types';
 
 const settings: ProjectSettings = {
   ...structuredClone(DEFAULT_SETTINGS),
@@ -250,5 +254,79 @@ describe('stacking', () => {
     expect(restingElevation('a', items, settings)).toBe(13);
     expect(restingElevation('far', items, settings)).toBe(0);
     expect(restingElevation('nope', items, settings)).toBe(0);
+  });
+});
+
+describe('recess engagement depends on what is below', () => {
+  // Default tray: 63.2 × 43.2 outer, 31.2 high (+2 with a lip); platform 100×100, 4 high (2 mm stops).
+  const real = (id: string, type: string, x: number, y: number, params: ItemParams = {}, z?: number): PlacedItem => ({
+    id,
+    type,
+    label: id.toUpperCase(),
+    x,
+    y,
+    rotation: 0,
+    params,
+    ...(z !== undefined ? { z } : {}),
+  });
+  const s2: ProjectSettings = { ...settings, box: { width: 300, depth: 150, height: 100 } };
+  const recess = { stackBottom: 'recess' };
+
+  beforeEach(() => {
+    for (const d of [tray, platform, spacer]) registerBoxType(d);
+  });
+
+  it('a recessed tray on a platform rests on the platform top (not lipHeight lower)', () => {
+    const items = [real('p', 'platform', 1, 1), real('t', 'tray', 10, 10, recess)];
+    expect(restingElevation('t', items, s2)).toBe(4);
+    const placed = [items[0], { ...items[1], z: 4 }];
+    expect(unsupportedItems(placed, s2)).toEqual([]);
+    expect(findOverlaps(placed, s2)).toEqual([]);
+    // 2 mm lower is an intersection, not a valid seat.
+    const sunk = [items[0], { ...items[1], z: 2 }];
+    expect(unsupportedItems(sunk, s2)).toEqual(['t']);
+    expect(layoutSummary(sunk, s2).issues.some((i) => /T intersects P/.test(i.message))).toBe(true);
+  });
+
+  it('a recessed tray on a lipped tray still engages lipHeight', () => {
+    const items = [real('lo', 'tray', 1, 1, { stackTop: 'lip' }), real('hi', 'tray', 1, 1, recess, 50)];
+    expect(restingElevation('hi', items, s2)).toBeCloseTo(31.2, 9);
+    const placed = [items[0], { ...items[1], z: 31.2 }];
+    expect(unsupportedItems(placed, s2)).toEqual([]);
+    expect(findOverlaps(placed, s2)).toEqual([]);
+  });
+
+  it('a recessed tray on a plain tray or a spacer rests on top', () => {
+    const onTray = [real('lo', 'tray', 1, 1), real('hi', 'tray', 1, 1, recess, 50)];
+    expect(restingElevation('hi', onTray, s2)).toBeCloseTo(31.2, 9);
+    const sunk = [onTray[0], { ...onTray[1], z: 29.2 }];
+    expect(unsupportedItems(sunk, s2)).toEqual(['hi']);
+    expect(findOverlaps(sunk, s2)).toEqual([['lo', 'hi']]);
+    const onSpacer = [real('s', 'spacer', 1, 1, { width: 70, depth: 50 }), real('hi', 'tray', 1, 1, recess, 50)];
+    expect(restingElevation('hi', onSpacer, s2)).toBe(30);
+  });
+
+  it('on a mix it rests on the highest effective surface; supporters are those that meet it', () => {
+    // Lipped tray (top 33.2, engages 2 → 31.2) next to a plain tray (top 31.2): both carry it at 31.2.
+    const lo1 = real('l1', 'tray', 1, 1, { stackTop: 'lip' });
+    const lo2 = real('l2', 'tray', 64.2, 1);
+    const wide = { ...recess, innerWidth: 123.2 };
+    const hi = real('hi', 'tray', 1, 1, wide, 50);
+    expect(restingElevation('hi', [lo1, lo2, hi], s2)).toBeCloseTo(31.2, 9);
+    const placed = [lo1, lo2, { ...hi, z: 31.2 }];
+    expect(unsupportedItems(placed, s2)).toEqual([]);
+    expect(findOverlaps(placed, s2)).toEqual([]);
+    // Two lipped trays: rests at 31.2 too; a lipped + a spacer of 33.2 → spacer is the highest surface.
+    const sp = real('sp', 'spacer', 64.2, 1, { width: 63.2, depth: 43.2, height: 33.2 });
+    expect(restingElevation('hi', [lo1, sp, hi], s2)).toBeCloseTo(33.2, 9);
+    // At 33.2 only the spacer meets it: half covered → floating.
+    expect(unsupportedItems([lo1, sp, { ...hi, z: 33.2 }], s2)).toEqual(['hi']);
+  });
+
+  it('plugs and platform corner stops keep their engagement on anything', () => {
+    const plug = [real('lo', 'tray', 1, 1), real('hi', 'tray', 1, 1, { stackBottom: 'plug' }, 50)];
+    expect(restingElevation('hi', plug, s2)).toBeCloseTo(29.2, 9);
+    const stops = [real('lo', 'tray', 1, 1, { innerWidth: 96.8, innerDepth: 96.8 }), real('p', 'platform', 1, 1, {}, 50)];
+    expect(restingElevation('p', stops, s2)).toBeCloseTo(29.2, 9);
   });
 });

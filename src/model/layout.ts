@@ -1,14 +1,14 @@
 /**
  * Pure 2D layout helpers for the top view (game box frame, mm). See DESIGN.md §2.
  */
-import type { PlacedItem, ProjectSettings } from './types';
-import { placedFootprint, resolveItem } from './resolve';
+import type { PlacedItem, ProjectSettings, ResolvedItem } from './types';
+import { SUPPORT_TOL, elevationOf, localToBoxRect, placedFootprint, resolveItem } from './resolve';
 import { findBoxType } from '../boxes/registry';
-import { engagementOf } from '../boxes/types';
+import { baseFeaturesOf, bearingAreasOf, engagementOf, keepOutOf, seatDepthOf } from '../boxes/types';
+import type { BearingArea, KeepOut } from '../boxes/types';
 
 export const EPS = 1e-6;
-/** Tolerance (mm) for "this item rests on that one" (top of supporter = bottom + engagement). */
-export const SUPPORT_TOL = 0.01;
+export { SUPPORT_TOL, elevationOf };
 
 export interface Rect {
   x: number;
@@ -27,8 +27,14 @@ export interface ItemRect extends Rect {
 
 export interface ValidationIssue {
   severity: 'error' | 'warning';
-  /** Machine‑readable kind for issues the views style specially. */
-  kind?: 'floating';
+  /**
+   * Machine‑readable kind for issues the views style specially:
+   * 'floating' (warning): not fully covered by the items below;
+   * 'unstable' (warning): stack fit — may tip;
+   * 'stack-fit' (error): stack fit — rests on nothing, base collides with
+   * what it rests on, or in the way of another item's keep‑out space.
+   */
+  kind?: 'floating' | 'unstable' | 'stack-fit';
   itemIds: string[];
   message: string;
 }
@@ -44,28 +50,58 @@ export function usableArea(settings: ProjectSettings): Rect {
   };
 }
 
-/** Rotated outer rectangle of a placed item. Throws for unknown box types. */
-export function itemRect(item: PlacedItem, settings: ProjectSettings): ItemRect {
-  const fp = placedFootprint(item, settings);
+/**
+ * Rotated outer rectangle of a placed item. Throws for unknown box types.
+ * Pass the project's `items` so context‑dependent heights (platform ridges) count.
+ */
+export function itemRect(item: PlacedItem, settings: ProjectSettings, items?: readonly PlacedItem[]): ItemRect {
+  const fp = placedFootprint(item, settings, items);
   const z = elevationOf(item);
   return { x: item.x, y: item.y, width: fp.width, depth: fp.depth, height: fp.height, z, top: z + fp.height };
 }
 
-/** item.z with undefined / invalid → 0. */
-export function elevationOf(item: PlacedItem): number {
-  const z = item.z;
-  return typeof z === 'number' && Number.isFinite(z) && z > 0 ? z : 0;
+/** resolveItem (with build context when `items` is given) that never throws (undefined for unknown types / failures). */
+function safeResolve(item: PlacedItem, settings: ProjectSettings, items?: readonly PlacedItem[]): ResolvedItem | undefined {
+  if (!findBoxType(item.type)) return undefined;
+  try {
+    return resolveItem(item, settings, items);
+  } catch {
+    return undefined;
+  }
 }
 
-/** Stack engagement of a placed item (0 for unknown types or failing definitions). */
-export function itemEngagement(item: PlacedItem, settings: ProjectSettings): number {
-  const def = findBoxType(item.type);
-  if (!def?.stackEngagement) return 0;
+/**
+ * Engagement of resolved `item` on resolved `below` (0 when either is missing
+ * or a definition fails): the item's own engagement on `below` plus the seat
+ * depth of `below` (how far below its top its resting surface lies, e.g. a
+ * platform's locating ridges).
+ */
+function pairEngagement(item: ResolvedItem | undefined, below: ResolvedItem | undefined): number {
+  if (!item || !below) return 0;
+  let own = 0;
+  let seat = 0;
   try {
-    return engagementOf(def, resolveItem(item, settings));
+    own = engagementOf(findBoxType(item.type), item, below);
   } catch {
-    return 0;
+    own = 0;
   }
+  try {
+    seat = seatDepthOf(findBoxType(below.type), below);
+  } catch {
+    seat = 0;
+  }
+  return own + seat;
+}
+
+/**
+ * How many mm `item` sinks below the top of `below` when stacked on it (0 for
+ * unknown types or failing definitions). Depends on both: e.g. a recess only
+ * engages a lipped tray; on a platform with locating ridges everything sits
+ * on the plate, the ridge height below its top. Pass the project's `items` so
+ * `below`'s build context (ridges) counts.
+ */
+export function itemEngagement(item: PlacedItem, below: PlacedItem, settings: ProjectSettings, items?: readonly PlacedItem[]): number {
+  return pairEngagement(safeResolve(item, settings, items), safeResolve(below, settings, items));
 }
 
 /** Size used for items whose type is unknown or whose footprint cannot be computed. */
@@ -78,10 +114,11 @@ export const FALLBACK_SIZE = 20;
 export function safeItemRect(
   item: PlacedItem,
   settings: ProjectSettings,
+  items?: readonly PlacedItem[],
 ): ItemRect & { broken?: true } {
   if (findBoxType(item.type)) {
     try {
-      const r = itemRect(item, settings);
+      const r = itemRect(item, settings, items);
       if ([r.width, r.depth, r.height].every((v) => Number.isFinite(v) && v >= 0)) return r;
     } catch {
       /* fall through */
@@ -111,24 +148,39 @@ export function rectInside(inner: Rect, outer: Rect): boolean {
   );
 }
 
-type StackRect = ItemRect & { broken?: true; engagement: number };
+type StackRect = ItemRect & { broken?: true; resolved?: ResolvedItem };
 
 function stackRects(items: PlacedItem[], settings: ProjectSettings): StackRect[] {
   return items.map((i) => {
-    const r = safeItemRect(i, settings);
-    return { ...r, engagement: r.broken ? 0 : itemEngagement(i, settings) };
+    const r = safeItemRect(i, settings, items);
+    return r.broken ? r : { ...r, resolved: safeResolve(i, settings, items) };
   });
+}
+
+/** The item's own engagement on `below` (without the seat depth of `below`); 0 on failures. */
+function ownEngagement(item: ResolvedItem | undefined, below: ResolvedItem | undefined): number {
+  if (!item || !below) return 0;
+  try {
+    return engagementOf(findBoxType(item.type), item, below);
+  } catch {
+    return 0;
+  }
+}
+
+/** Engagement of `hi` stacked on `lo`. */
+function engagementOn(hi: StackRect, lo: StackRect): number {
+  return pairEngagement(hi.resolved, lo.resolved);
 }
 
 /**
  * Z ranges of two XY‑overlapping items intersect. The upper item (higher z)
- * may sink `engagement` mm into the lower one: its effective bottom is
+ * may sink its engagement on the lower one into it: its effective bottom is
  * z + engagement. Items at the same z always collide.
  */
 function zCollide(a: StackRect, b: StackRect): boolean {
   if (Math.abs(a.z - b.z) <= EPS) return true;
   const [lo, hi] = a.z < b.z ? [a, b] : [b, a];
-  return hi.z + hi.engagement < lo.top - EPS && lo.z < hi.top - EPS;
+  return hi.z + engagementOn(hi, lo) < lo.top - EPS && lo.z < hi.top - EPS;
 }
 
 /** Pairs of items that overlap in XY and whose (engagement‑adjusted) Z ranges intersect. */
@@ -184,8 +236,8 @@ export function rectCovered(target: Rect, cover: Rect[]): boolean {
 
 /**
  * Ids of items with z > 0 that are not fully supported: their XY rect must be
- * covered by the union of the rects of items whose top equals the item's
- * z + engagement (within SUPPORT_TOL).
+ * covered by the union of the rects of items `o` with
+ * o.top − engagement(item on o) = z (within SUPPORT_TOL).
  */
 export function unsupportedItems(items: PlacedItem[], settings: ProjectSettings): string[] {
   const rects = stackRects(items, settings);
@@ -193,41 +245,331 @@ export function unsupportedItems(items: PlacedItem[], settings: ProjectSettings)
   items.forEach((item, idx) => {
     const r = rects[idx];
     if (!(r.z > EPS)) return;
-    const seat = r.z + r.engagement;
-    const supporters = rects.filter(
-      (o, j) => j !== idx && !o.broken && Math.abs(o.top - seat) <= SUPPORT_TOL && rectsOverlap(o, r),
-    );
-    if (!rectCovered(r, supporters)) out.push(item.id);
+    if (!rectCovered(r, supportersOf(rects, idx).map((j) => rects[j]))) out.push(item.id);
   });
   return out;
 }
 
 /**
  * Elevation at which an item rests on whatever it overlaps in XY:
- * max(top of overlapping others) − engagement, or 0 when it overlaps nothing.
+ * max over XY‑overlapping others `o` of (o.top − engagement(item on o)), i.e.
+ * the highest effective surface, or 0 when it overlaps nothing.
  */
 export function restingElevation(itemId: string, items: PlacedItem[], settings: ProjectSettings): number {
   const idx = items.findIndex((i) => i.id === itemId);
   if (idx < 0) return 0;
   const rects = stackRects(items, settings);
   const r = rects[idx];
-  let top = -Infinity;
+  let z = 0;
   rects.forEach((o, j) => {
-    if (j !== idx && rectsOverlap(o, r)) top = Math.max(top, o.top);
+    if (j !== idx && rectsOverlap(o, r)) z = Math.max(z, o.top - engagementOn(r, o));
   });
-  if (top === -Infinity) return 0;
-  return Math.max(0, top - r.engagement);
+  return z;
 }
 
 export function itemsOutsideUsable(items: PlacedItem[], settings: ProjectSettings): string[] {
   const usable = usableArea(settings);
-  return items.filter((i) => !rectInside(safeItemRect(i, settings), usable)).map((i) => i.id);
+  return items.filter((i) => !rectInside(safeItemRect(i, settings, items), usable)).map((i) => i.id);
+}
+
+/**
+ * Top of an item including its keep‑out space (standing cards): the highest
+ * point anything of it reaches. Never throws.
+ */
+export function effectiveTop(item: PlacedItem, settings: ProjectSettings, items?: readonly PlacedItem[]): number {
+  const r = safeItemRect(item, settings, items);
+  if (r.broken) return r.top;
+  let top = r.top;
+  for (const k of placedKeepOut(item, r, safeResolve(item, settings, items))) top = Math.max(top, k.bottom + k.height);
+  return top;
 }
 
 export function itemsTooTall(items: PlacedItem[], settings: ProjectSettings): string[] {
-  return items
-    .filter((i) => safeItemRect(i, settings).top > settings.box.height + EPS)
-    .map((i) => i.id);
+  return items.filter((i) => effectiveTop(i, settings, items) > settings.box.height + EPS).map((i) => i.id);
+}
+
+/* ---------------------------------------------------------------- stack fit */
+
+/**
+ * An item rests safely when its centre lies inside the convex hull of its
+ * contact area by at least this fraction of its smaller side; otherwise it
+ * "may tip" (warning).
+ */
+export const TIP_MARGIN_FRACTION = 0.1;
+
+/** A bearing area in the game box frame, `height` absolute (above the game box floor). */
+interface PlacedArea extends Rect {
+  height: number;
+  role: NonNullable<BearingArea['role']>;
+  name: string;
+}
+
+/** A keep‑out space in the game box frame from `bottom` (the item's top) up `height`. */
+interface PlacedKeepOut extends Rect {
+  bottom: number;
+  height: number;
+  name: string;
+  fix?: string;
+}
+
+/** Unrotated footprint of a (non‑broken) stack rect. */
+function localFootprint(item: PlacedItem, r: ItemRect) {
+  return item.rotation === 90
+    ? { width: r.depth, depth: r.width, height: r.height }
+    : { width: r.width, depth: r.depth, height: r.height };
+}
+
+function toBox<R extends Rect>(item: PlacedItem, r: ItemRect, local: R): R {
+  return localToBoxRect(item, localFootprint(item, r).depth, local);
+}
+
+const localRect = (a: { x: number; y: number; width: number; depth: number }): Rect => ({
+  x: a.x,
+  y: a.y,
+  width: a.width,
+  depth: a.depth,
+});
+
+function placedBearingAreas(item: PlacedItem, r: ItemRect, resolved: ResolvedItem | undefined): PlacedArea[] {
+  const def = findBoxType(item.type);
+  if (!def || !resolved) return [];
+  try {
+    return bearingAreasOf(def, resolved, localFootprint(item, r)).map((a) => ({
+      ...toBox(item, r, localRect(a)),
+      height: r.z + a.height,
+      role: a.role ?? 'bearing',
+      name: a.name ?? 'top',
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function placedBaseFeatures(item: PlacedItem, r: ItemRect, resolved: ResolvedItem | undefined) {
+  const def = findBoxType(item.type);
+  if (!def || !resolved) return [];
+  try {
+    return baseFeaturesOf(def, resolved).map((f) => ({ ...toBox(item, r, localRect(f)), kind: f.kind, height: f.height, name: f.name }));
+  } catch {
+    return [];
+  }
+}
+
+function placedKeepOut(item: PlacedItem, r: ItemRect, resolved: ResolvedItem | undefined): PlacedKeepOut[] {
+  const def = findBoxType(item.type);
+  if (!def || !resolved) return [];
+  try {
+    return keepOutOf(def, resolved).map((k: KeepOut) => ({
+      ...toBox(item, r, localRect(k)),
+      bottom: r.top,
+      height: k.height,
+      name: k.name,
+      ...(k.fix ? { fix: k.fix } : {}),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function intersect(a: Rect, b: Rect): Rect | null {
+  const x0 = Math.max(a.x, b.x);
+  const y0 = Math.max(a.y, b.y);
+  const x1 = Math.min(a.x + a.width, b.x + b.width);
+  const y1 = Math.min(a.y + a.depth, b.y + b.depth);
+  return x1 - x0 > EPS && y1 - y0 > EPS ? { x: x0, y: y0, width: x1 - x0, depth: y1 - y0 } : null;
+}
+
+const containsPoint = (r: Rect, px: number, py: number) =>
+  px > r.x - EPS && px < r.x + r.width + EPS && py > r.y - EPS && py < r.y + r.depth + EPS;
+
+/** Convex hull (counter‑clockwise in x/y, Andrew's monotone chain). */
+function convexHull(points: [number, number][]): [number, number][] {
+  const pts = points.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (pts.length < 3) return pts;
+  const cross = (o: number[], a: number[], b: number[]) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower: [number, number][] = [];
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= EPS) lower.pop();
+    lower.push(p);
+  }
+  const upper: [number, number][] = [];
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= EPS) upper.pop();
+    upper.push(p);
+  }
+  return lower.slice(0, -1).concat(upper.slice(0, -1));
+}
+
+/**
+ * Signed distance of (px, py) inside the convex hull of `rects` (positive =
+ * inside, distance to the nearest hull edge); −Infinity for a degenerate hull.
+ */
+function hullDepth(rects: Rect[], px: number, py: number): number {
+  const hull = convexHull(
+    rects.flatMap((r): [number, number][] => [
+      [r.x, r.y],
+      [r.x + r.width, r.y],
+      [r.x, r.y + r.depth],
+      [r.x + r.width, r.y + r.depth],
+    ]),
+  );
+  if (hull.length < 3) return -Infinity;
+  let depth = Infinity;
+  for (let i = 0; i < hull.length; i++) {
+    const [ax, ay] = hull[i];
+    const [bx, by] = hull[(i + 1) % hull.length];
+    const len = Math.hypot(bx - ax, by - ay);
+    if (len <= EPS) continue;
+    // Counter‑clockwise: inside is to the left of every edge.
+    depth = Math.min(depth, ((bx - ax) * (py - ay) - (by - ay) * (px - ax)) / len);
+  }
+  return depth;
+}
+
+/** A part of what an item rests on that reaches into its base. */
+export interface StackCollision {
+  supporterId: string;
+  /** What of the item is hit: a protrusion name ("plug", "corner stop"), "floor" or "recess". */
+  part: string;
+  /** Whether `part` is a protrusion. */
+  protrusion: boolean;
+  /** Names of the supporter's areas that reach into it ("wall", "lip", "divider", …). */
+  areas: string[];
+  /** Whether every area hit is a lip / ridge. */
+  lip: boolean;
+}
+
+/** Stack fit of one item with z > 0 that rests on at least one other item. */
+export interface StackFit {
+  itemId: string;
+  /** Items it rests on (top − engagement = z within SUPPORT_TOL). */
+  supporterIds: string[];
+  /** Footprint ∩ bearing areas of the supporters at its base height. */
+  contact: Rect[];
+  /** Names of the bearing areas in contact. */
+  contactNames: string[];
+  /** 'none': no contact; 'tip': the centre is not inside the contact hull by the margin. */
+  bearing: 'ok' | 'tip' | 'none';
+  collisions: StackCollision[];
+}
+
+/** Supporters of rect `idx`: the others it overlaps whose top − engagement = its z. */
+function supportersOf(rects: StackRect[], idx: number): number[] {
+  const r = rects[idx];
+  const out: number[] = [];
+  rects.forEach((o, j) => {
+    if (j !== idx && !o.broken && rectsOverlap(o, r) && Math.abs(o.top - engagementOn(r, o) - r.z) <= SUPPORT_TOL) out.push(j);
+  });
+  return out;
+}
+
+/**
+ * Stack fit check (DESIGN.md §4.3) for every item with z > 0 that rests on
+ * something:
+ *
+ * * Bearing: contact = footprint ∩ the supporters' bearing areas whose
+ *   height lies within [z, z + own engagement on that supporter] (± SUPPORT_TOL).
+ *   No contact → 'none'; the footprint centre not inside the contact's convex
+ *   hull by TIP_MARGIN_FRACTION × the smaller side → 'tip'.
+ * * Fit: no area of a supporter may reach above the item's base where it lies:
+ *   the base is at z under a protrusion (plug, stops), at z + P elsewhere (P =
+ *   tallest protrusion) and z + P + depth under a recess.
+ */
+export function stackFit(items: PlacedItem[], settings: ProjectSettings): StackFit[] {
+  return stackFitFor(items, stackRects(items, settings));
+}
+
+function stackFitFor(items: PlacedItem[], rects: StackRect[]): StackFit[] {
+  const out: StackFit[] = [];
+  items.forEach((item, idx) => {
+    const r = rects[idx];
+    if (r.broken || !(r.z > EPS)) return;
+    const sup = supportersOf(rects, idx);
+    if (!sup.length) return;
+    const features = placedBaseFeatures(item, r, r.resolved);
+    const P = Math.max(0, ...features.filter((f) => f.kind === 'protrusion').map((f) => f.height));
+    const contact: Rect[] = [];
+    const contactNames = new Set<string>();
+    const collisions: StackCollision[] = [];
+    for (const j of sup) {
+      const o = rects[j];
+      const ownE = ownEngagement(r.resolved, o.resolved);
+      const hits = new Map<string, { protrusion: boolean; areas: Set<string>; lip: boolean }>();
+      for (const a of placedBearingAreas(items[j], o, o.resolved)) {
+        const I = intersect(a, r);
+        if (!I) continue;
+        if (a.role !== 'low' && a.height >= r.z - SUPPORT_TOL && a.height <= r.z + ownE + SUPPORT_TOL) {
+          contact.push(I);
+          contactNames.add(a.name);
+        }
+        if (a.height <= r.z + SUPPORT_TOL) continue;
+        // Cells of I split by the base features; base height per cell.
+        const fs = features.map((f) => intersect(f, I)).map((c, k) => (c ? { ...features[k], ...c } : null)).filter((f) => f !== null);
+        const xs = uniqSorted([I.x, I.x + I.width, ...fs.flatMap((f) => [f.x, f.x + f.width])]);
+        const ys = uniqSorted([I.y, I.y + I.depth, ...fs.flatMap((f) => [f.y, f.y + f.depth])]);
+        for (let xi = 0; xi + 1 < xs.length; xi++) {
+          for (let yi = 0; yi + 1 < ys.length; yi++) {
+            const mx = (xs[xi] + xs[xi + 1]) / 2;
+            const my = (ys[yi] + ys[yi + 1]) / 2;
+            const here = fs.filter((f) => containsPoint(f, mx, my));
+            const prot = here.find((f) => f.kind === 'protrusion');
+            const rec = here.filter((f) => f.kind === 'recess');
+            const base = prot ? r.z : r.z + P + Math.max(0, ...rec.map((f) => f.height));
+            if (a.height <= base + SUPPORT_TOL) continue;
+            const part = prot ? prot.name : rec.length ? rec[0].name : 'floor';
+            const h = hits.get(part) ?? { protrusion: !!prot, areas: new Set<string>(), lip: true };
+            h.areas.add(a.name);
+            if (a.role !== 'lip') h.lip = false;
+            hits.set(part, h);
+          }
+        }
+      }
+      for (const [part, h] of hits) {
+        collisions.push({ supporterId: items[j].id, part, protrusion: h.protrusion, areas: [...h.areas], lip: h.lip });
+      }
+    }
+    let bearing: StackFit['bearing'] = 'ok';
+    if (!contact.length) bearing = 'none';
+    else {
+      const margin = TIP_MARGIN_FRACTION * Math.min(r.width, r.depth);
+      if (hullDepth(contact, r.x + r.width / 2, r.y + r.depth / 2) < margin - EPS) bearing = 'tip';
+    }
+    out.push({ itemId: item.id, supporterIds: sup.map((j) => items[j].id), contact, contactNames: [...contactNames], bearing, collisions });
+  });
+  return out;
+}
+
+function uniqSorted(vs: number[]): number[] {
+  const sorted = vs.slice().sort((a, b) => a - b);
+  const out: number[] = [];
+  for (const v of sorted) if (!out.length || v - out[out.length - 1] > EPS) out.push(v);
+  return out;
+}
+
+/** Pairs [keeperId, intruderId]: items reaching into another item's keep‑out space (standing cards). */
+export function keepOutViolations(items: PlacedItem[], settings: ProjectSettings): { keeperId: string; intruderId: string; keepOut: PlacedKeepOut }[] {
+  return keepOutFor(items, stackRects(items, settings));
+}
+
+function keepOutFor(items: PlacedItem[], rects: StackRect[]) {
+  const out: { keeperId: string; intruderId: string; keepOut: PlacedKeepOut }[] = [];
+  items.forEach((item, idx) => {
+    const r = rects[idx];
+    if (r.broken) return;
+    for (const k of placedKeepOut(item, r, r.resolved)) {
+      rects.forEach((o, j) => {
+        if (j === idx || o.broken) return;
+        if (!rectsOverlap(o, k)) return;
+        if (o.z < k.bottom + k.height - EPS && o.top > k.bottom + EPS) {
+          if (!out.some((v) => v.keeperId === item.id && v.intruderId === items[j].id)) {
+            out.push({ keeperId: item.id, intruderId: items[j].id, keepOut: k });
+          }
+        }
+      });
+    }
+  });
+  return out;
 }
 
 /* ---------------------------------------------------------------- snapping */
@@ -394,6 +736,15 @@ export function boundingBox(rects: Rect[]): Rect | null {
 }
 
 const fmt = (v: number) => String(Math.round(v * 10) / 10);
+const capitalize = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+/** "a", "a and b", "a, b and c". */
+function joinAnd(parts: string[]): string {
+  const u = [...new Set(parts)];
+  return u.length <= 1 ? (u[0] ?? '') : `${u.slice(0, -1).join(', ')} and ${u[u.length - 1]}`;
+}
+/** Plural of an area / feature name for messages ("wall" → "walls"; one‑piece faces stay singular). */
+const SINGULAR = new Set(['top', 'plate', 'floor']);
+const plural = (n: string) => (n.endsWith('s') || SINGULAR.has(n) ? n : `${n}s`);
 
 export function layoutSummary(items: PlacedItem[], settings: ProjectSettings): LayoutSummary {
   const usable = usableArea(settings);
@@ -419,7 +770,7 @@ export function layoutSummary(items: PlacedItem[], settings: ProjectSettings): L
     const ra = rects[index.get(a)!];
     const rb = rects[index.get(b)!];
     const [lo, hi, loId, hiId] = ra.z <= rb.z ? [ra, rb, a, b] : [rb, ra, b, a];
-    const seat = hi.z + hi.engagement;
+    const seat = hi.z + engagementOn(hi, lo);
     if (seat > lo.z + EPS && seat < lo.top - EPS) {
       // Stacked item whose base lies inside the body of the item below.
       issues.push({
@@ -434,9 +785,22 @@ export function layoutSummary(items: PlacedItem[], settings: ProjectSettings): L
   for (const id of itemsOutsideUsable(items, settings)) {
     issues.push({ severity: 'error', itemIds: [id], message: `${label(id)} is outside the usable area.` });
   }
+  const keepOuts = keepOutFor(items, rects);
   items.forEach((item, idx) => {
     const { top, z } = rects[idx];
-    if (top > settings.box.height + EPS) {
+    const k = rects[idx].broken ? [] : placedKeepOut(item, rects[idx], rects[idx].resolved);
+    const kTop = Math.max(top, ...k.map((o) => o.bottom + o.height));
+    if (kTop > top + EPS && kTop > settings.box.height + EPS) {
+      const ko = k.reduce((a, b) => (b.bottom + b.height > a.bottom + a.height ? b : a));
+      issues.push({
+        severity: 'error',
+        itemIds: [item.id],
+        message:
+          `${label(item.id)} is too tall: its ${ko.name} reach ${fmt(kTop)} mm > box ${fmt(settings.box.height)} mm` +
+          (top > settings.box.height + EPS ? ` (the tray itself ${fmt(top)} mm).` : ` (the tray itself only ${fmt(top)} mm).`) +
+          (ko.fix ? ` ${capitalize(ko.fix)} of ${label(item.id)} or use a taller game box.` : ''),
+      });
+    } else if (top > settings.box.height + EPS) {
       issues.push({
         severity: 'error',
         itemIds: [item.id],
@@ -447,7 +811,68 @@ export function layoutSummary(items: PlacedItem[], settings: ProjectSettings): L
       });
     }
   });
-  for (const id of unsupportedItems(items, settings)) {
+  for (const v of keepOuts) {
+    const k = v.keepOut;
+    issues.push({
+      severity: 'error',
+      kind: 'stack-fit',
+      itemIds: [v.intruderId, v.keeperId],
+      message:
+        `${label(v.intruderId)} is in the way of the ${k.name} of ${label(v.keeperId)}, which stick out ${fmt(k.height)} mm above it. ` +
+        `Move ${label(v.intruderId)} off ${label(v.keeperId)}` +
+        (k.fix ? `, or ${k.fix} of ${label(v.keeperId)}.` : '.'),
+    });
+  }
+
+  // Stack fit: per item one support message (rests on nothing / may tip /
+  // floating), plus base collisions.
+  const fits = new Map(stackFitFor(items, rects).map((f) => [f.itemId, f]));
+  const unsupported = new Set(unsupportedItems(items, settings));
+  const names = (ids: string[]) => joinAnd(ids.map(label));
+  for (const [id, fit] of fits) {
+    const A = label(id);
+    for (const c of fit.collisions) {
+      const S = label(c.supporterId);
+      const what = joinAnd(c.areas.map(plural));
+      let message: string;
+      if (c.protrusion) {
+        message =
+          `${A}: its ${c.part} does not fit into ${S}: it hits the ${what} of ${S}. A ${c.part} needs an empty cavity below. ` +
+          `Move ${A} so its ${c.part} drops into an open cavity, or give ${A} a base without ${plural(c.part)}.`;
+      } else if (c.lip) {
+        message =
+          `${A} collides with the ${what} of ${S}: it lies under the ${c.part} of ${A}, not under its recess. ` +
+          `Line up the edges of ${A} with the walls of ${S} so the ${what} drop into the recess, or give ${A} a flat base.`;
+      } else {
+        message =
+          `${A} collides with the ${what} of ${S}, which reach into its ${c.part}. ` +
+          `Use "Rest on items below" or move ${A}.`;
+      }
+      issues.push({ severity: 'error', kind: 'stack-fit', itemIds: [id, c.supporterId], message });
+    }
+    if (fit.bearing === 'none') {
+      issues.push({
+        severity: 'error',
+        kind: 'stack-fit',
+        itemIds: [id],
+        message:
+          `${A} rests on nothing: it hangs over the open cavity of ${names(fit.supporterIds)}. ` +
+          `Move it so it reaches the walls of ${names(fit.supporterIds)}, or put a platform under it.`,
+      });
+    } else if (fit.bearing === 'tip') {
+      issues.push({
+        severity: 'warning',
+        kind: 'unstable',
+        itemIds: [id],
+        message:
+          `${A} may tip: it bears only on the ${joinAnd(fit.contactNames.map(plural))} of ${names(fit.supporterIds)} on one side of its centre. ` +
+          `Make it reach opposite walls of ${names(fit.supporterIds)}, or put a platform under it.`,
+      });
+    }
+  }
+  for (const id of unsupported) {
+    const fit = fits.get(id);
+    if (fit && fit.bearing !== 'ok') continue; // already reported above
     const r = rects[index.get(id)!];
     issues.push({
       severity: 'warning',
@@ -461,7 +886,7 @@ export function layoutSummary(items: PlacedItem[], settings: ProjectSettings): L
     const def = findBoxType(item.type);
     if (!def?.validate) continue;
     try {
-      for (const msg of def.validate(resolveItem(item, settings))) {
+      for (const msg of def.validate(resolveItem(item, settings, items))) {
         issues.push({ severity: 'warning', itemIds: [item.id], message: `${label(item.id)}: ${msg}` });
       }
     } catch (e) {
@@ -481,10 +906,13 @@ export function layoutSummary(items: PlacedItem[], settings: ProjectSettings): L
   };
 }
 
-/** Ids of items flagged as floating (unsupported) by the summary. */
+/**
+ * Ids of stacked items with a support warning: floating (not fully covered)
+ * or unstable (may tip). Only the stacked item, not what it rests on.
+ */
 export function floatingItemIds(summary: LayoutSummary): Set<string> {
   const s = new Set<string>();
-  for (const i of summary.issues) if (i.kind === 'floating') i.itemIds.forEach((id) => s.add(id));
+  for (const i of summary.issues) if (i.kind === 'floating' || i.kind === 'unstable') s.add(i.itemIds[0]);
   return s;
 }
 

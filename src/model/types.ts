@@ -67,6 +67,36 @@ export interface Project {
   items: PlacedItem[];
 }
 
+/**
+ * An item resting on another one (its base at the other's context‑free top),
+ * described in the lower item's local frame (unrotated, origin = outer
+ * top‑left corner, mm). Rotation of both items is already applied.
+ */
+export interface ItemAbove {
+  id: string;
+  /** Outer footprint rectangle in the lower item's local frame. */
+  x: number;
+  y: number;
+  width: number;
+  depth: number;
+  /** Resolved wall thickness of the item above. */
+  wall: number;
+  /** Its `stackBottom` param ('none' when absent). */
+  stackBottom: string;
+  /** Its `lipHeight` param (0 when absent). */
+  lipHeight: number;
+}
+
+/**
+ * Build context: what a box needs to know about the rest of the project.
+ * Computed in one place (`resolveItem(item, settings, items)` →
+ * `buildContext`), only for types whose `usesItemsAbove(item)` is true.
+ */
+export interface BuildContext {
+  /** Items resting on this one, sorted by id. */
+  itemsAbove: ItemAbove[];
+}
+
 /** An item with every default applied; what box definitions consume. */
 export interface ResolvedItem {
   id: string;
@@ -75,6 +105,12 @@ export interface ResolvedItem {
   wall: number;
   floor: number;
   params: ItemParams;
+  /**
+   * Present only when the type asks for it (`usesItemsAbove`) and the caller
+   * passed the project's items to `resolveItem`. Geometry (footprint, build,
+   * draw) may depend on it, so it is part of the exporter's `geometryKey`.
+   */
+  context?: BuildContext;
 }
 
 export const DEFAULT_SETTINGS: ProjectSettings = {

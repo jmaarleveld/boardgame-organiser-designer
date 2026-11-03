@@ -2,6 +2,8 @@ import type { BoxTypeDefinition, TopViewFeature } from '../types';
 import type { ResolvedItem } from '../../model/types';
 import type { Solid } from '../../geometry/types';
 import {
+  cavityBaseFeatures,
+  cavityBearingAreas,
   notchCutter,
   notchRect,
   num,
@@ -11,6 +13,7 @@ import {
   stackedOpenBox,
   stacking,
   stackingParams,
+  stackingNewItemParams,
   stackNotches,
   str,
   validateNotch,
@@ -129,6 +132,7 @@ export const cardTray: BoxTypeDefinition = {
     },
     ...stackingParams,
   ],
+  newItemParams: { ...stackingNewItemParams },
 
   footprint(item) {
     const g = geom(item);
@@ -176,4 +180,27 @@ export const cardTray: BoxTypeDefinition = {
   },
 
   stackEngagement,
+
+  bearingAreas(item) {
+    const g = geom(item);
+    return cavityBearingAreas(g.iw + 2 * g.wall, g.id + 2 * g.wall, g.wall, g.floor, g.ih, g.stacking);
+  },
+
+  baseFeatures(item) {
+    const g = geom(item);
+    return cavityBaseFeatures(g.iw + 2 * g.wall, g.id + 2 * g.wall, g.wall, g.stacking);
+  },
+
+  /**
+   * Upright cards stand on the floor and stick out exposedHeight above the
+   * wall top, i.e. exposedHeight − lipHeight above the outer top: the cavity
+   * above the tray must stay free up to there.
+   */
+  keepOut(item) {
+    const g = geom(item);
+    if (!g.upright || !(g.ih > 0)) return [];
+    const above = g.exposed - g.stacking.lipH;
+    if (!(above > 0)) return [];
+    return [{ x: g.wall, y: g.wall, width: g.iw, depth: g.id, height: above, name: 'standing cards', fix: 'lower the exposed height' }];
+  },
 };

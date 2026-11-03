@@ -3,6 +3,12 @@ import { clearRegistry, registerBoxType } from '../boxes/registry';
 import { createEmptyProject } from '../model/types';
 import { findOverlaps, unsupportedItems, usableArea } from '../model/layout';
 import { fakeBox } from '../model/fakeBox.testutil';
+import { tray } from '../boxes/definitions/tray';
+import { dividedTray } from '../boxes/definitions/divided-tray';
+import { cardTray } from '../boxes/definitions/card-tray';
+import { spacer } from '../boxes/definitions/spacer';
+import { platform } from '../boxes/definitions/platform';
+import { defaultParams } from '../boxes/types';
 import { HISTORY_LIMIT, useStore } from './store';
 
 const st = () => useStore.getState();
@@ -174,5 +180,62 @@ describe('store', () => {
     // A plain duplicate goes back to the floor level.
     const flat = st().duplicateItem(copyId)!;
     expect('z' in items().find((i) => i.id === flat)!).toBe(false);
+  });
+
+  describe('creation-time stacking params', () => {
+    beforeEach(() => {
+      for (const d of [tray, dividedTray, cardTray, spacer, platform]) registerBoxType(d);
+    });
+
+    it.each(['tray', 'divided-tray', 'card-tray'])('a new %s gets lip + recess', (type) => {
+      const id = st().addItem(type);
+      const item = items().find((i) => i.id === id)!;
+      expect(item.params).toMatchObject({ stackTop: 'lip', stackBottom: 'recess' });
+    });
+
+    it('ParamSpec defaults stay flat so saved projects keep their geometry', () => {
+      for (const d of [tray, dividedTray, cardTray]) {
+        expect(defaultParams(d)).toMatchObject({ stackTop: 'none', stackBottom: 'none' });
+      }
+    });
+
+    it('spacer and platform are unaffected', () => {
+      for (const d of [spacer, platform]) {
+        const id = st().addItem(d.id);
+        expect(items().find((i) => i.id === id)!.params).toEqual(defaultParams(d));
+      }
+    });
+
+    it('duplicates keep the source params (no creation-time override)', () => {
+      const id = st().addItem('tray');
+      st().setParam(id, 'stackTop', 'none');
+      st().setParam(id, 'stackBottom', 'plug');
+      const copy = st().duplicateItem(id)!;
+      const stacked = st().duplicateItemStacked(id)!;
+      for (const c of [copy, stacked]) {
+        expect(items().find((i) => i.id === c)!.params).toMatchObject({ stackTop: 'none', stackBottom: 'plug' });
+      }
+    });
+
+    it('loading a project keeps its params as stored', () => {
+      const p = createEmptyProject();
+      p.items.push({ id: 'a', type: 'tray', label: 'T', x: 1, y: 1, rotation: 0, params: {} });
+      st().loadProject(p);
+      expect(items()[0].params).toEqual({});
+    });
+  });
+
+  it('duplicate on top of a recessed tray without a lip rests on its top', () => {
+    registerBoxType(tray);
+    const id = st().addItem('tray');
+    st().setParam(id, 'stackTop', 'none');
+    const copy = st().duplicateItemStacked(id)!;
+    expect(items().find((i) => i.id === copy)?.z).toBeCloseTo(31.2, 9);
+    st().setParam(id, 'stackTop', 'lip');
+    st().setParam(copy, 'stackTop', 'lip');
+    st().stackOnBelow(copy);
+    expect(items().find((i) => i.id === copy)?.z).toBeCloseTo(31.2, 9); // 33.2 − 2
+    const third = st().duplicateItemStacked(copy)!;
+    expect(items().find((i) => i.id === third)?.z).toBeCloseTo(62.4, 9);
   });
 });

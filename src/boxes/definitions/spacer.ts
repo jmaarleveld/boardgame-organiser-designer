@@ -32,6 +32,12 @@ export const spacer: BoxTypeDefinition = {
     return [{ kind: 'rect', role: 'solid', x: 0, y: 0, w: s.w, h: s.d }];
   },
 
+  /** Solid block: the whole top bears. */
+  bearingAreas(item) {
+    const s = size(item);
+    return [{ x: 0, y: 0, width: s.w, depth: s.d, height: s.h, name: 'top' }];
+  },
+
   validate(item) {
     const s = size(item);
     const problems: string[] = [];

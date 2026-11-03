@@ -43,16 +43,18 @@ export function Inspector({ previewSlot, exportSlot }: InspectorProps) {
     );
   }
 
-  const { settings } = project;
+  const { settings, items } = project;
   const def = findBoxType(item.type);
-  const rect = safeItemRect(item, settings);
+  const rect = safeItemRect(item, settings, items);
   let messages: string[] = [];
   let resolvedParams = item.params;
+  let basedOn: { itemIds: string[]; note: string } | null = null;
   if (def) {
     try {
-      const resolved = resolveItem(item, settings);
+      const resolved = resolveItem(item, settings, items);
       resolvedParams = resolved.params;
       messages = def.validate?.(resolved) ?? [];
+      basedOn = def.describeContext?.(resolved) ?? null;
     } catch (e) {
       messages = [String(e)];
     }
@@ -118,6 +120,20 @@ export function Inspector({ previewSlot, exportSlot }: InspectorProps) {
             <h3>Parameters</h3>
             <ParamForm specs={def.params} values={resolvedParams} onChange={(k, v) => setParam(item.id, k, v)} />
           </>
+        )}
+
+        {basedOn && (
+          <div className="based-on" aria-label="Geometry based on">
+            {basedOn.itemIds.length > 0 && <span className="field-label">Geometry based on</span>}
+            {basedOn.itemIds.length > 0 && (
+              <ul>
+                {basedOn.itemIds.map((id) => (
+                  <li key={id}>{items.find((i) => i.id === id)?.label || id}</li>
+                ))}
+              </ul>
+            )}
+            <p className="muted">{basedOn.note}</p>
+          </div>
         )}
 
         <p className="footprint">

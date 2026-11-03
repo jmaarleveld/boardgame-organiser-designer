@@ -4,7 +4,7 @@
  */
 import type { ResolvedItem } from '../../model/types';
 import type { GeometryKernel, Solid } from '../../geometry/types';
-import type { ParamSpec, TopViewFeature } from '../types';
+import type { BaseFeature, BearingArea, ParamSpec, TopViewFeature } from '../types';
 
 /** Overshoot used to make boolean cuts clean (cutters poke through faces). */
 export const EPS = 0.01;
@@ -191,10 +191,12 @@ export const stackingParams: ParamSpec[] = [
     options: [
       { value: 'none', label: 'Flat' },
       { value: 'recess', label: 'Recess (sits on a lip)' },
-      { value: 'plug', label: 'Plug (drops into the cavity below)' },
+      { value: 'plug', label: 'Plug (retrofit onto a plain tray)' },
     ],
     group: 'Stacking',
-    help: 'Made for a same‑footprint, same‑wall tray below.',
+    help:
+      'Made for a same‑footprint, same‑wall tray below. Recess pairs with a lip tray (the standard). ' +
+      'Plug is a retrofit for stacking onto an already printed flat‑topped tray: it drops into the empty cavity below and takes plug height of it.',
   },
   {
     key: 'lipHeight',
@@ -233,6 +235,16 @@ export const stackingParams: ParamSpec[] = [
   },
 ];
 
+/**
+ * Creation‑time stacking for new cavity trays (`BoxTypeDefinition.newItemParams`):
+ * lip/recess is the standard locking mechanism. The ParamSpec defaults stay
+ * 'none' so saved projects and the sample keep their geometry.
+ */
+export const stackingNewItemParams = { stackTop: 'lip', stackBottom: 'recess' } as const satisfies Record<
+  string,
+  StackTop | StackBottom
+>;
+
 export interface Stacking {
   top: StackTop;
   bottom: StackBottom;
@@ -266,14 +278,20 @@ export function stacking(item: ResolvedItem): Stacking {
 }
 
 /**
- * How deep the base sinks into the tray below. A recessed base sits with its
+ * How deep the base sinks into the item below. A recessed base sits with its
  * inner wall half on the inner half of the lower wall, so the lip (lipHeight)
  * is engaged and the extra recess depth (clearance) stays as a gap above the
- * lip. A plug drops plugHeight into the cavity below.
+ * lip — but only when `below` has a lip (stackTop 'lip'); on anything else
+ * (plain tray, platform, spacer) it rests on top (0). Without `below` the
+ * nominal lip engagement is returned. A plug drops plugHeight into the cavity
+ * below, whatever it is.
  */
-export function stackEngagement(item: ResolvedItem): number {
+export function stackEngagement(item: ResolvedItem, below?: ResolvedItem): number {
   const s = stacking(item);
-  if (s.bottom === 'recess') return Math.max(0, s.lipHeight);
+  if (s.bottom === 'recess') {
+    if (below && below.params.stackTop !== 'lip') return 0;
+    return Math.max(0, s.lipHeight);
+  }
   if (s.bottom === 'plug') return s.plugH;
   return 0;
 }
@@ -366,4 +384,68 @@ export function validateStacking(
   if (s.bottom === 'plug' && (innerWidth - 2 * s.clearance <= 0 || innerDepth - 2 * s.clearance <= 0)) {
     problems.push('Plug clearance is larger than the cavity: the plug would have no size.');
   }
+}
+
+/* ---------------------------------------------------------------- stack fit */
+
+/** Local rectangle. */
+export interface LocalRect {
+  x: number;
+  y: number;
+  width: number;
+  depth: number;
+}
+
+/**
+ * Ring of thickness `t` just inside the rectangle (x0, y0)–(x1, y1), as four
+ * non‑overlapping bars (full‑width front / back, sides in between). Bars of
+ * zero size are dropped.
+ */
+export function ringRects(x0: number, y0: number, x1: number, y1: number, t: number): LocalRect[] {
+  const tt = Math.min(t, (x1 - x0) / 2, (y1 - y0) / 2);
+  if (!(tt > 0)) return [];
+  const bars: LocalRect[] = [
+    { x: x0, y: y0, width: x1 - x0, depth: tt },
+    { x: x0, y: y1 - tt, width: x1 - x0, depth: tt },
+    { x: x0, y: y0 + tt, width: tt, depth: y1 - y0 - 2 * tt },
+    { x: x1 - tt, y: y0 + tt, width: tt, depth: y1 - y0 - 2 * tt },
+  ];
+  return bars.filter((b) => b.width > 1e-9 && b.depth > 1e-9);
+}
+
+/**
+ * Bearing areas of a stackable open box (outer W × D): the wall ring at the
+ * wall top. With a lip, the outer half of the wall is the lip ring (role
+ * 'lip', at the lip top) and only the inner half of the wall is at the wall
+ * top: that is what a recessed base rests on.
+ */
+export function cavityBearingAreas(W: number, D: number, wall: number, floor: number, innerHeight: number, s: Stacking): BearingArea[] {
+  const wallTop = s.plugH + floor + innerHeight;
+  if (s.lipH > 0) {
+    const t = wall / 2;
+    return [
+      ...ringRects(0, 0, W, D, t).map((r) => ({ ...r, height: wallTop + s.lipH, role: 'lip' as const, name: 'lip' })),
+      ...ringRects(t, t, W - t, D - t, wall - t).map((r) => ({ ...r, height: wallTop, name: 'wall' })),
+    ];
+  }
+  return ringRects(0, 0, W, D, wall).map((r) => ({ ...r, height: wallTop, name: 'wall' }));
+}
+
+/** Base features of a stackable open box: the recess ring or the plug pad. */
+export function cavityBaseFeatures(W: number, D: number, wall: number, s: Stacking): BaseFeature[] {
+  if (s.recessDepth > 0) {
+    return ringRects(0, 0, W, D, wall / 2 + s.clearance).map((r) => ({
+      ...r,
+      kind: 'recess' as const,
+      height: s.recessDepth,
+      name: 'recess',
+    }));
+  }
+  if (s.plugH > 0) {
+    const c = s.clearance;
+    const pw = W - 2 * wall - 2 * c;
+    const pd = D - 2 * wall - 2 * c;
+    if (pw > 0 && pd > 0) return [{ kind: 'protrusion', x: wall + c, y: wall + c, width: pw, depth: pd, height: s.plugH, name: 'plug' }];
+  }
+  return [];
 }

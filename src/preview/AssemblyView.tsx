@@ -27,9 +27,9 @@ export interface AssemblyEntry {
 
 const COLORS: Record<ItemTint, number> = {
   normal: 0xe4d9c2, // print‑plastic off‑white (matches the top view's item fill family)
-  problem: 0xf0a040, // overlap / outside usable area
-  tall: 0xe5534b, // sticks out of the box
-  floating: 0x9cc8f0, // stacked but not fully supported
+  problem: 0xf0a040, // overlap / outside usable area / stack fit error
+  tall: 0xe5534b, // sticks out of the box (incl. standing cards)
+  floating: 0x9cc8f0, // stacked but not fully supported, or may tip
 };
 const SELECT_COLOR = 0x2563eb;
 
@@ -415,7 +415,7 @@ export default function AssemblyView({ className, onPopOut, onClose }: AssemblyV
   const entries = useMemo<AssemblyEntry[]>(
     () =>
       items.map((item) => {
-        const size = localSize(item, settings);
+        const size = localSize(item, settings, items);
         const key = itemKeys.get(item.id) ?? null;
         return {
           id: item.id,

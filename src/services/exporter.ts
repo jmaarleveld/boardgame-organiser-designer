@@ -25,13 +25,28 @@ function stableStringify(v: unknown): string {
 }
 
 /**
- * Key identifying identical geometry: resolved type/wall/floor/params.
- * Shared by the zip export (dedup) and the assembly view's mesh cache.
- * Throws for unknown box types (via resolveItem).
+ * Key identifying identical geometry: resolved type/wall/floor/params plus
+ * the build context (items above, e.g. what a platform's ridges are based
+ * on; ids left out, entries sorted) for types that use one. Shared by the zip
+ * export (dedup), the item preview and the assembly view's mesh cache, so
+ * moving an item on a ridged platform rebuilds that platform. Throws for
+ * unknown box types (via resolveItem).
  */
 export function geometryKey(project: Project, item: PlacedItem): string {
-  const r = resolveItem(item, project.settings);
-  return stableStringify({ type: r.type, wall: r.wall, floor: r.floor, params: r.params });
+  const r = resolveItem(item, project.settings, project.items);
+  const context = r.context
+    ? { itemsAbove: r.context.itemsAbove.map(({ id: _id, ...rest }) => stableStringify(rest)).sort() }
+    : undefined;
+  return stableStringify({ type: r.type, wall: r.wall, floor: r.floor, params: r.params, context });
+}
+
+/** geometryKey that returns null instead of throwing (unknown box type …). */
+export function safeGeometryKey(project: Project, item: PlacedItem): string | null {
+  try {
+    return geometryKey(project, item);
+  } catch {
+    return null;
+  }
 }
 
 function fileLabel(item: PlacedItem): string {
@@ -44,10 +59,14 @@ function fmt(n: number): string {
 
 function scadHeader(project: Project, items: PlacedItem[]): string {
   const first = items[0];
-  const resolved = resolveItem(first, project.settings);
+  const resolved = resolveItem(first, project.settings, project.items);
   const def = getBoxType(first.type);
   const fp = def.footprint(resolved);
   const labels = items.map((i) => i.label || i.id).join(', ');
+  const ctx = def.describeContext?.(resolved);
+  const basedOn = ctx?.itemIds.length
+    ? [`Based on: ${ctx.itemIds.map((id) => project.items.find((i) => i.id === id)?.label || id).join(', ')}`]
+    : [];
   const params = Object.entries(resolved.params)
     .filter(([, v]) => v !== undefined)
     .map(([k, v]) => `${k} = ${typeof v === 'string' ? JSON.stringify(v) : String(v)}`);
@@ -58,6 +77,7 @@ function scadHeader(project: Project, items: PlacedItem[]): string {
     `Outer dimensions: ${fmt(fp.width)} x ${fmt(fp.depth)} x ${fmt(fp.height)} mm (W x D x H)`,
     `Wall = ${resolved.wall}`,
     `Floor = ${resolved.floor}`,
+    ...basedOn,
     '',
     'Parameters (informational; geometry below uses literal values)',
     ...params,
@@ -69,14 +89,14 @@ export function createExporter(getKernel: () => Promise<GeometryKernel>): Export
     const item = project.items.find((i) => i.id === itemId);
     if (!item) throw new Error(`Item "${itemId}" not found`);
     const def = getBoxType(item.type);
-    return def.build(resolveItem(item, project.settings), kernel);
+    return def.build(resolveItem(item, project.settings, project.items), kernel);
   }
 
   function buildScad(project: Project, items: PlacedItem[]): string {
     const scadKernel = createScadKernel();
     const first = items[0];
     const def = getBoxType(first.type);
-    const solid = def.build(resolveItem(first, project.settings), scadKernel);
+    const solid = def.build(resolveItem(first, project.settings, project.items), scadKernel);
     return scadKernel.toScad(solid, scadHeader(project, items));
   }
 
@@ -113,7 +133,7 @@ export function createExporter(getKernel: () => Promise<GeometryKernel>): Export
         const fileName = `${String(i + 1).padStart(pad, '0')}_${fileLabel(first)}_x${items.length}.stl`;
         zip.file(fileName, stl);
         zip.file(fileName.replace(/\.stl$/, '.scad'), buildScad(project, items));
-        const fp = getBoxType(first.type).footprint(resolveItem(first, s));
+        const fp = getBoxType(first.type).footprint(resolveItem(first, s, project.items));
         lines.push(
           `${fileName}: count ${items.length}; items ${items.map((it) => it.label || it.id).join(', ')}; outer ${fmt(fp.width)} x ${fmt(fp.depth)} x ${fmt(fp.height)} mm`,
         );

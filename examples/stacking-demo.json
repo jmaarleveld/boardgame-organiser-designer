@@ -1,0 +1,855 @@
+{
+  "version": 1,
+  "settings": {
+    "name": "Stacking demo",
+    "box": {
+      "width": 520,
+      "depth": 530,
+      "height": 120
+    },
+    "tolerance": {
+      "x": 2,
+      "y": 2
+    },
+    "defaults": {
+      "wall": 1.6,
+      "floor": 1.2
+    },
+    "gridSnap": 1
+  },
+  "items": [
+    {
+      "id": "a1",
+      "type": "tray",
+      "label": "A1 lip tray, base (OK)",
+      "x": 1,
+      "y": 1,
+      "params": {
+        "stackTop": "lip"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "a2",
+      "type": "tray",
+      "label": "A2 recess on lip, lip on top (OK)",
+      "x": 1,
+      "y": 1,
+      "z": 31.2,
+      "params": {
+        "stackTop": "lip",
+        "stackBottom": "recess"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "a3",
+      "type": "tray",
+      "label": "A3 recess on lip, top level (OK)",
+      "x": 1,
+      "y": 1,
+      "z": 62.4,
+      "params": {
+        "stackBottom": "recess"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "b1",
+      "type": "tray",
+      "label": "B1 plain tray, base (OK)",
+      "x": 70.2,
+      "y": 1,
+      "params": {},
+      "rotation": 0
+    },
+    {
+      "id": "b2",
+      "type": "tray",
+      "label": "B2 plug on plain tray (OK)",
+      "x": 70.2,
+      "y": 1,
+      "z": 29.2,
+      "params": {
+        "stackBottom": "plug"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "c1",
+      "type": "divided-tray",
+      "label": "C1 divided tray, base (flagged with C2)",
+      "x": 139.4,
+      "y": 1,
+      "params": {
+        "innerWidth": 60,
+        "innerDepth": 40
+      },
+      "rotation": 0
+    },
+    {
+      "id": "c2",
+      "type": "tray",
+      "label": "C2 plug on dividers (error)",
+      "x": 139.4,
+      "y": 1,
+      "z": 24.2,
+      "params": {
+        "stackBottom": "plug"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "d1",
+      "type": "tray",
+      "label": "D1 tray under platform (OK)",
+      "x": 208.6,
+      "y": 1,
+      "params": {
+        "innerWidth": 40
+      },
+      "rotation": 0
+    },
+    {
+      "id": "d2",
+      "type": "tray",
+      "label": "D2 tray under platform (OK)",
+      "x": 251.8,
+      "y": 1,
+      "params": {
+        "innerWidth": 40
+      },
+      "rotation": 0
+    },
+    {
+      "id": "d3",
+      "type": "platform",
+      "label": "D3 platform with stops on two trays (OK)",
+      "x": 208.6,
+      "y": 1,
+      "z": 29.2,
+      "params": {
+        "width": 86.4,
+        "depth": 43.2
+      },
+      "rotation": 0
+    },
+    {
+      "id": "d4",
+      "type": "tray",
+      "label": "D4 tray on platform (OK)",
+      "x": 208.6,
+      "y": 1,
+      "z": 33.2,
+      "params": {
+        "innerWidth": 83.2
+      },
+      "rotation": 0
+    },
+    {
+      "id": "e1",
+      "type": "tray",
+      "label": "E1 tray under platform (OK)",
+      "x": 301,
+      "y": 1,
+      "params": {
+        "innerDepth": 90
+      },
+      "rotation": 0
+    },
+    {
+      "id": "e2",
+      "type": "tray",
+      "label": "E2 tray under platform (OK)",
+      "x": 364.2,
+      "y": 1,
+      "params": {
+        "innerDepth": 90
+      },
+      "rotation": 0
+    },
+    {
+      "id": "e3",
+      "type": "platform",
+      "label": "E3 platform without stops (OK)",
+      "x": 301,
+      "y": 1,
+      "z": 31.2,
+      "params": {
+        "width": 126.4,
+        "depth": 93.2,
+        "cornerStops": false
+      },
+      "rotation": 0
+    },
+    {
+      "id": "e4",
+      "type": "card-tray",
+      "label": "E4 flat cards on platform (OK)",
+      "x": 301,
+      "y": 1,
+      "z": 33.2,
+      "params": {
+        "orientation": "flat"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "e5",
+      "type": "tray",
+      "label": "E5 tray on platform (OK)",
+      "x": 369.7,
+      "y": 1,
+      "z": 33.2,
+      "params": {
+        "innerWidth": 54.5,
+        "innerDepth": 90
+      },
+      "rotation": 0
+    },
+    {
+      "id": "f1",
+      "type": "tray",
+      "label": "F1 big lip tray (OK)",
+      "x": 1,
+      "y": 100.2,
+      "params": {
+        "stackTop": "lip",
+        "innerWidth": 186.4,
+        "innerDepth": 126.8
+      },
+      "rotation": 0
+    },
+    {
+      "id": "f2",
+      "type": "tray",
+      "label": "F2 strip on big tray (OK)",
+      "x": 1,
+      "y": 100.2,
+      "z": 31.2,
+      "params": {
+        "stackBottom": "recess",
+        "innerWidth": 60,
+        "innerDepth": 126.8
+      },
+      "rotation": 0
+    },
+    {
+      "id": "f3",
+      "type": "tray",
+      "label": "F3 strip on big tray (OK)",
+      "x": 64.2,
+      "y": 100.2,
+      "z": 31.2,
+      "params": {
+        "stackBottom": "recess",
+        "innerWidth": 60,
+        "innerDepth": 126.8
+      },
+      "rotation": 0
+    },
+    {
+      "id": "f4",
+      "type": "tray",
+      "label": "F4 strip on big tray (OK)",
+      "x": 127.4,
+      "y": 100.2,
+      "z": 31.2,
+      "params": {
+        "stackBottom": "recess",
+        "innerWidth": 60,
+        "innerDepth": 126.8
+      },
+      "rotation": 0
+    },
+    {
+      "id": "g1",
+      "type": "tray",
+      "label": "G1 lip tray (OK)",
+      "x": 196.6,
+      "y": 100.2,
+      "params": {
+        "stackTop": "lip"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "g2",
+      "type": "tray",
+      "label": "G2 narrow recess on three walls (OK)",
+      "x": 196.6,
+      "y": 100.2,
+      "z": 31.2,
+      "params": {
+        "stackBottom": "recess",
+        "innerWidth": 40
+      },
+      "rotation": 0
+    },
+    {
+      "id": "g3",
+      "type": "tray",
+      "label": "G3 lip tray (flagged with G5)",
+      "x": 266.6,
+      "y": 100.2,
+      "params": {
+        "stackTop": "lip"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "g4",
+      "type": "tray",
+      "label": "G4 lip tray (flagged with G5)",
+      "x": 329.8,
+      "y": 100.2,
+      "params": {
+        "stackTop": "lip"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "g5",
+      "type": "tray",
+      "label": "G5 recess across two lips, lips under floor (error)",
+      "x": 266.6,
+      "y": 100.2,
+      "z": 31.2,
+      "params": {
+        "stackBottom": "recess",
+        "innerWidth": 123.2
+      },
+      "rotation": 0
+    },
+    {
+      "id": "h1",
+      "type": "tray",
+      "label": "H1 plain tray, base (OK)",
+      "x": 399,
+      "y": 100.2,
+      "params": {},
+      "rotation": 0
+    },
+    {
+      "id": "h2",
+      "type": "tray",
+      "label": "H2 recess on plain tray, rests on top (OK)",
+      "x": 399,
+      "y": 100.2,
+      "z": 31.2,
+      "params": {
+        "stackBottom": "recess"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "i1",
+      "type": "tray",
+      "label": "I1 tray, base (OK)",
+      "x": 1,
+      "y": 236.2,
+      "params": {},
+      "rotation": 0
+    },
+    {
+      "id": "i2",
+      "type": "tray",
+      "label": "I2 overhangs on one wall, may tip (warning)",
+      "x": 31,
+      "y": 236.2,
+      "z": 31.2,
+      "params": {},
+      "rotation": 0
+    },
+    {
+      "id": "j1",
+      "type": "tray",
+      "label": "J1 tall tray (OK)",
+      "x": 100.2,
+      "y": 236.2,
+      "params": {
+        "innerHeight": 30
+      },
+      "rotation": 0
+    },
+    {
+      "id": "j2",
+      "type": "tray",
+      "label": "J2 short tray (OK)",
+      "x": 163.4,
+      "y": 236.2,
+      "params": {
+        "innerHeight": 20
+      },
+      "rotation": 0
+    },
+    {
+      "id": "j3",
+      "type": "platform",
+      "label": "J3 platform on uneven trays, may tip (warning)",
+      "x": 100.2,
+      "y": 236.2,
+      "z": 29.2,
+      "params": {
+        "width": 126.4,
+        "depth": 43.2
+      },
+      "rotation": 0
+    },
+    {
+      "id": "k1",
+      "type": "tray",
+      "label": "K1 tray, base (flagged with K2)",
+      "x": 232.6,
+      "y": 236.2,
+      "params": {},
+      "rotation": 0
+    },
+    {
+      "id": "k2",
+      "type": "tray",
+      "label": "K2 sunk into K1 (error)",
+      "x": 232.6,
+      "y": 236.2,
+      "z": 15,
+      "params": {},
+      "rotation": 0
+    },
+    {
+      "id": "l1",
+      "type": "tray",
+      "label": "L1 lip tray, level 1 (OK)",
+      "x": 301.8,
+      "y": 236.2,
+      "params": {
+        "stackTop": "lip",
+        "innerWidth": 40
+      },
+      "rotation": 0
+    },
+    {
+      "id": "l2",
+      "type": "tray",
+      "label": "L2 level 2 (OK)",
+      "x": 301.8,
+      "y": 236.2,
+      "z": 31.2,
+      "params": {
+        "stackTop": "lip",
+        "stackBottom": "recess",
+        "innerWidth": 40
+      },
+      "rotation": 0
+    },
+    {
+      "id": "l3",
+      "type": "tray",
+      "label": "L3 level 3 (OK)",
+      "x": 301.8,
+      "y": 236.2,
+      "z": 62.4,
+      "params": {
+        "stackTop": "lip",
+        "stackBottom": "recess",
+        "innerWidth": 40
+      },
+      "rotation": 0
+    },
+    {
+      "id": "l4",
+      "type": "tray",
+      "label": "L4 level 4, too tall (error)",
+      "x": 301.8,
+      "y": 236.2,
+      "z": 93.6,
+      "params": {
+        "stackTop": "lip",
+        "stackBottom": "recess",
+        "innerWidth": 40
+      },
+      "rotation": 0
+    },
+    {
+      "id": "m1",
+      "type": "tray",
+      "label": "M1 tray under platform (OK)",
+      "x": 351,
+      "y": 236.2,
+      "params": {},
+      "rotation": 0
+    },
+    {
+      "id": "m2",
+      "type": "spacer",
+      "label": "M2 spacer under platform (OK)",
+      "x": 414.2,
+      "y": 236.2,
+      "params": {
+        "width": 40,
+        "depth": 43.2,
+        "height": 31.2
+      },
+      "rotation": 0
+    },
+    {
+      "id": "m3",
+      "type": "platform",
+      "label": "M3 platform on tray and spacer (OK)",
+      "x": 351,
+      "y": 236.2,
+      "z": 31.2,
+      "params": {
+        "width": 103.2,
+        "depth": 43.2,
+        "cornerStops": false
+      },
+      "rotation": 0
+    },
+    {
+      "id": "n1",
+      "type": "tray",
+      "label": "N1 rotated lip tray (OK)",
+      "x": 460.2,
+      "y": 236.2,
+      "params": {
+        "stackTop": "lip"
+      },
+      "rotation": 90
+    },
+    {
+      "id": "n2",
+      "type": "tray",
+      "label": "N2 rotated recess on lip (OK)",
+      "x": 460.2,
+      "y": 236.2,
+      "z": 31.2,
+      "params": {
+        "stackBottom": "recess"
+      },
+      "rotation": 90
+    },
+    {
+      "id": "o1",
+      "type": "card-tray",
+      "label": "O1 upright cards (flagged with O2)",
+      "x": 1,
+      "y": 305.4,
+      "params": {
+        "orientation": "upright"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "o2",
+      "type": "spacer",
+      "label": "O2 lid on upright cards (error)",
+      "x": 1,
+      "y": 305.4,
+      "z": 69.2,
+      "params": {
+        "width": 34.2,
+        "depth": 68.7,
+        "height": 5
+      },
+      "rotation": 0
+    },
+    {
+      "id": "o3",
+      "type": "card-tray",
+      "label": "O3 tall upright cards stick out of the box (error)",
+      "x": 41,
+      "y": 305.4,
+      "params": {
+        "orientation": "upright",
+        "cardHeight": 130
+      },
+      "rotation": 0
+    },
+    {
+      "id": "p1",
+      "type": "tray",
+      "label": "P1 tray, base (OK)",
+      "x": 81.2,
+      "y": 305.4,
+      "params": {},
+      "rotation": 0
+    },
+    {
+      "id": "p2",
+      "type": "platform",
+      "label": "P2 platform on one tray (OK)",
+      "x": 81.2,
+      "y": 305.4,
+      "z": 29.2,
+      "params": {
+        "width": 63.2,
+        "depth": 43.2
+      },
+      "rotation": 0
+    },
+    {
+      "id": "p3",
+      "type": "tray",
+      "label": "P3 wider than platform, floating (warning)",
+      "x": 81.2,
+      "y": 305.4,
+      "z": 33.2,
+      "params": {
+        "innerWidth": 90
+      },
+      "rotation": 0
+    },
+    {
+      "id": "q1",
+      "type": "tray",
+      "label": "Q1 tray under platform (OK)",
+      "x": 180.4,
+      "y": 305.4,
+      "params": {
+        "innerWidth": 60,
+        "innerDepth": 80
+      },
+      "rotation": 0
+    },
+    {
+      "id": "q2",
+      "type": "tray",
+      "label": "Q2 tray under platform (OK)",
+      "x": 243.6,
+      "y": 305.4,
+      "params": {
+        "innerWidth": 60,
+        "innerDepth": 80
+      },
+      "rotation": 0
+    },
+    {
+      "id": "q3",
+      "type": "platform",
+      "label": "Q3 ridged platform with stops (OK)",
+      "x": 180.4,
+      "y": 305.4,
+      "z": 29.2,
+      "params": {
+        "width": 126.4,
+        "depth": 83.2,
+        "locateItems": true
+      },
+      "rotation": 0
+    },
+    {
+      "id": "q4",
+      "type": "tray",
+      "label": "Q4 recessed tray on ridges (OK)",
+      "x": 181.6,
+      "y": 307,
+      "z": 33.2,
+      "params": {
+        "stackTop": "lip",
+        "stackBottom": "recess",
+        "innerWidth": 56.8,
+        "innerDepth": 76.8
+      },
+      "rotation": 0
+    },
+    {
+      "id": "q5",
+      "type": "divided-tray",
+      "label": "Q5 recessed divided tray on ridges (OK)",
+      "x": 241.6,
+      "y": 307,
+      "z": 33.2,
+      "params": {
+        "stackTop": "lip",
+        "stackBottom": "recess",
+        "innerWidth": 56.8,
+        "innerDepth": 76.8,
+        "columns": 2,
+        "rows": 2
+      },
+      "rotation": 0
+    },
+    {
+      "id": "r1",
+      "type": "tray",
+      "label": "R1 big lip tray (OK)",
+      "x": 312.8,
+      "y": 305.4,
+      "params": {
+        "stackTop": "lip",
+        "innerWidth": 123.2,
+        "innerDepth": 83.2
+      },
+      "rotation": 0
+    },
+    {
+      "id": "r2",
+      "type": "tray",
+      "label": "R2 2 × 2 grid corner, may tip (warning)",
+      "x": 312.8,
+      "y": 305.4,
+      "z": 31.2,
+      "params": {
+        "stackBottom": "recess"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "r3",
+      "type": "tray",
+      "label": "R3 2 × 2 grid corner, may tip (warning)",
+      "x": 376,
+      "y": 305.4,
+      "z": 31.2,
+      "params": {
+        "stackBottom": "recess"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "r4",
+      "type": "tray",
+      "label": "R4 2 × 2 grid corner, may tip (warning)",
+      "x": 312.8,
+      "y": 348.6,
+      "z": 31.2,
+      "params": {
+        "stackBottom": "recess"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "r5",
+      "type": "tray",
+      "label": "R5 2 × 2 grid corner, may tip (warning)",
+      "x": 376,
+      "y": 348.6,
+      "z": 31.2,
+      "params": {
+        "stackBottom": "recess"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "s1",
+      "type": "tray",
+      "label": "S1 big lip tray (OK)",
+      "x": 1,
+      "y": 397.8,
+      "params": {
+        "stackTop": "lip",
+        "innerWidth": 186.4,
+        "innerDepth": 126.4
+      },
+      "rotation": 0
+    },
+    {
+      "id": "s2",
+      "type": "tray",
+      "label": "S2 3 × 3 grid corner, may tip (warning)",
+      "x": 1,
+      "y": 397.8,
+      "z": 31.2,
+      "params": {
+        "stackBottom": "recess"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "s3",
+      "type": "tray",
+      "label": "S3 3 × 3 grid edge, may tip (warning)",
+      "x": 64.2,
+      "y": 397.8,
+      "z": 31.2,
+      "params": {
+        "stackBottom": "recess"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "s4",
+      "type": "tray",
+      "label": "S4 3 × 3 grid corner, may tip (warning)",
+      "x": 127.4,
+      "y": 397.8,
+      "z": 31.2,
+      "params": {
+        "stackBottom": "recess"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "s5",
+      "type": "tray",
+      "label": "S5 3 × 3 grid edge, may tip (warning)",
+      "x": 1,
+      "y": 441,
+      "z": 31.2,
+      "params": {
+        "stackBottom": "recess"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "s6",
+      "type": "tray",
+      "label": "S6 3 × 3 grid middle, rests on nothing (error)",
+      "x": 64.2,
+      "y": 441,
+      "z": 31.2,
+      "params": {
+        "stackBottom": "recess"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "s7",
+      "type": "tray",
+      "label": "S7 3 × 3 grid edge, may tip (warning)",
+      "x": 127.4,
+      "y": 441,
+      "z": 31.2,
+      "params": {
+        "stackBottom": "recess"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "s8",
+      "type": "tray",
+      "label": "S8 3 × 3 grid corner, may tip (warning)",
+      "x": 1,
+      "y": 484.2,
+      "z": 31.2,
+      "params": {
+        "stackBottom": "recess"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "s9",
+      "type": "tray",
+      "label": "S9 3 × 3 grid edge, may tip (warning)",
+      "x": 64.2,
+      "y": 484.2,
+      "z": 31.2,
+      "params": {
+        "stackBottom": "recess"
+      },
+      "rotation": 0
+    },
+    {
+      "id": "s10",
+      "type": "tray",
+      "label": "S10 3 × 3 grid corner, may tip (warning)",
+      "x": 127.4,
+      "y": 484.2,
+      "z": 31.2,
+      "params": {
+        "stackBottom": "recess"
+      },
+      "rotation": 0
+    }
+  ]
+}

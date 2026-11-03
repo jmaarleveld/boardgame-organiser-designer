@@ -6,11 +6,15 @@
  */
 import type { PlacedItem, ProjectSettings } from '../model/types';
 import type { LayoutSummary } from '../model/layout';
-import { EPS, errorItemIds, floatingItemIds, safeItemRect } from '../model/layout';
+import { EPS, effectiveTop, errorItemIds, floatingItemIds, safeItemRect } from '../model/layout';
 
 /** Unrotated outer size of an item (its mesh's local extent). Never throws. */
-export function localSize(item: PlacedItem, settings: ProjectSettings): { width: number; depth: number; height: number; broken: boolean } {
-  const r = safeItemRect(item, settings);
+export function localSize(
+  item: PlacedItem,
+  settings: ProjectSettings,
+  items?: readonly PlacedItem[],
+): { width: number; depth: number; height: number; broken: boolean } {
+  const r = safeItemRect(item, settings, items);
   const rotated = item.rotation === 90 && !r.broken;
   return {
     width: rotated ? r.depth : r.width,
@@ -56,8 +60,9 @@ export function applyMatrix(m: number[], p: [number, number, number]): [number, 
 
 /**
  * 'tall' = sticks out of the box; 'problem' = other error (overlap,
- * intersection, outside usable area, broken); 'floating' = stacked item not
- * fully supported by the items below.
+ * intersection, outside usable area, broken, stack fit error); 'floating' =
+ * stacked item not fully supported by the items below, or that may tip.
+ * 'tall' counts keep‑out space (standing cards sticking out of the box).
  */
 export type ItemTint = 'normal' | 'problem' | 'tall' | 'floating';
 
@@ -70,7 +75,7 @@ export function classifyItems(
   const floating = floatingItemIds(summary);
   const out = new Map<string, ItemTint>();
   for (const item of items) {
-    const top = safeItemRect(item, settings).top;
+    const top = effectiveTop(item, settings, items);
     if (top > settings.box.height + EPS) out.set(item.id, 'tall');
     else if (errors.has(item.id)) out.set(item.id, 'problem');
     else if (floating.has(item.id)) out.set(item.id, 'floating');

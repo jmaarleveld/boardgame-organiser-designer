@@ -116,6 +116,9 @@ input:disabled { background: #f1f2f4; color: var(--muted); }
 .footprint { margin: 4px 0; font-variant-numeric: tabular-nums; }
 .messages { margin: 0; padding-left: 16px; }
 .messages .warning { color: var(--warning); }
+.based-on { margin: 4px 0; }
+.based-on ul { margin: 0; padding-left: 16px; }
+.based-on p { margin: 2px 0 0; }
 
 .palette ul, .issues, .bgg-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .palette-item { width: 100%; text-align: left; display: flex; flex-direction: column; gap: 1px; cursor: grab; }

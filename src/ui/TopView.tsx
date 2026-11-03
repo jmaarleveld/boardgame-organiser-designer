@@ -101,7 +101,7 @@ export function TopView({ summary }: { summary: LayoutSummary }) {
   }, []);
 
   /* ---- geometry ---- */
-  const rects = useMemo(() => items.map((i) => safeItemRect(i, settings)), [items, settings]);
+  const rects = useMemo(() => items.map((i) => safeItemRect(i, settings, items)), [items, settings]);
   const usable = usableArea(settings);
   const boxRect: Rect = { x: 0, y: 0, width: settings.box.width, depth: settings.box.depth };
   const contentBounds = boundingBox([boxRect, ...rects])!;
@@ -365,6 +365,7 @@ export function TopView({ summary }: { summary: LayoutSummary }) {
               item={item}
               rect={rects[idx]}
               settings={settings}
+              items={items}
               m={m}
               selected={item.id === selectedId}
               error={errors.has(item.id)}
@@ -454,6 +455,8 @@ interface ItemShapeProps {
   item: PlacedItem;
   rect: ItemRect & { broken?: true };
   settings: ProjectSettings;
+  /** All items of the project (build context, e.g. platform ridges). */
+  items: PlacedItem[];
   m: number;
   selected: boolean;
   error: boolean;
@@ -464,12 +467,12 @@ interface ItemShapeProps {
   onFocus(): void;
 }
 
-function ItemShape({ item, rect, settings, m, selected, error, warning, dragging, onPointerDown, onFocus }: ItemShapeProps) {
+function ItemShape({ item, rect, settings, items, m, selected, error, warning, dragging, onPointerDown, onFocus }: ItemShapeProps) {
   const def = findBoxType(item.type);
   let features: TopViewFeature[] = [];
   if (def && !rect.broken) {
     try {
-      features = def.draw(resolveItem(item, settings));
+      features = def.draw(resolveItem(item, settings, items));
     } catch {
       features = [];
     }

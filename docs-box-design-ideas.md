@@ -3,7 +3,7 @@
 Working notes for the standard organizer set. The v1 set (tray, divided tray,
 card tray, spacer, platform) is a starting point; this file collects proposed
 additions and the questions whose answers change the designs.
-Last updated 2026-10-31.
+Last updated 2026-11-03.
 
 ## Proposed additions and changes
 
@@ -25,8 +25,30 @@ Last updated 2026-10-31.
 - **Rounded corners and chamfers as a project default.** Outer corner radius of
   2 to 3 mm and a small bottom chamfer (avoids elephant foot, looks better).
   Project-wide default like wall thickness, overridable per item.
-- **Stacking** (being implemented): elevation per item, lip/recess and floor plug
+- **Stacking** (done, 719747e): elevation per item, lip/recess and floor plug
   mechanisms on cavity types, platform element with corner stops.
+- **Locating ridges on the platform top** (decided 2026-11-03, being built):
+  lip-shaped ridges along the outer edge of each recessed item resting on the
+  platform, so several smaller containers lock onto one level with the same
+  lip/recess mechanism. Items without a recess get nothing (flat). First feature
+  where an item's geometry depends on its neighbours (box contract change);
+  moving an item on the platform means reprinting the platform. Pockets cut into
+  the plate were the rejected alternative (thicker plate, thin walls between
+  flush items).
+- **Stack fit check** (done 2026-11-03): an item's base is checked against the
+  top of what it rests on. Box types describe their bearing areas (open trays:
+  the walls, with a lip the inner wall half plus the lip; divided trays add
+  full-height dividers; platforms and spacers are solid), base features
+  (recess ring, plug, corner stops) and keep-out space (standing cards).
+  No contact is an error ("rests on nothing"); contact whose hull does not
+  contain the centre by 10 % of the smaller side is a "may tip" warning; a lip
+  under a floor, a plug or corner stop hitting walls, dividers or a solid top,
+  and anything in the space of standing cards are errors; standing cards count
+  for "too tall". Strips across a big tray pass, a 2 × 2 grid warns, the
+  middle of a 3 × 3 grid is an error. `examples/stacking-demo.json` (cases A–S)
+  labels every item with what the app reports, and a test keeps that true.
+  Possible follow-ups: show bearing areas and keep-out space in the top view;
+  let *Rest on items below* skip items whose keep-out it would enter.
 
 ## Open questions
 
@@ -50,3 +72,10 @@ Last updated 2026-10-31.
   not the engine.
 - The assembly view is mirrored in Y so it reads like the top view; revisit when
   the first chiral box type (tilted card well) is added.
+- Lip/recess is the standard locking mechanism: new trays, divided trays and card
+  trays get `stackTop: lip` and `stackBottom: recess`. The parameter default stays
+  `none`, so saved projects keep their geometry. The plug stays only as a
+  retrofit option for putting a tray onto an already printed plain tray
+  (decided 2026-11-03).
+- Platforms get locating ridges on top, on by default (a checkbox can turn them
+  off), derived from the recessed items resting on them (decided 2026-11-03).

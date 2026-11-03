@@ -1,14 +1,17 @@
 /**
  * Mesh cache for the Assembly view: one MeshData per unique geometry key
- * (exporter's `geometryKey`: resolved type / wall / floor / params). Shared by
- * every mounted assembly view (inline + pop‑out). Moving, rotating or
- * relabelling items never changes a key, so it never triggers a build.
+ * (exporter's `geometryKey`: resolved type / wall / floor / params and, for
+ * context‑dependent types, the build context). Shared by every mounted
+ * assembly view (inline + pop‑out). Moving, rotating or relabelling items
+ * never changes their own key, so it never triggers a build — except that
+ * moving or changing an item resting on a platform with locating ridges
+ * changes that platform's key, which rebuilds the platform.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MeshData } from '../geometry/types';
-import type { PlacedItem, Project } from '../model/types';
+import type { Project } from '../model/types';
 import type { Exporter } from '../services/contracts';
-import { geometryKey } from '../services/exporter';
+import { safeGeometryKey } from '../services/exporter';
 import { LruCache, missingKeys } from './assemblyScene';
 
 export const MESH_CACHE_CAPACITY = 64;
@@ -38,14 +41,7 @@ function countBuild(): void {
   dbg.meshCacheSize = () => meshCache.size;
 }
 
-/** geometryKey that returns null instead of throwing (unknown box type …). */
-export function safeGeometryKey(project: Project, item: PlacedItem): string | null {
-  try {
-    return geometryKey(project, item);
-  } catch {
-    return null;
-  }
-}
+export { safeGeometryKey };
 
 function buildKey(exporter: Exporter, project: Project, itemId: string, key: string, protect: ReadonlySet<string>): Promise<void> {
   let p = inflight.get(key);

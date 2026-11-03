@@ -4,6 +4,7 @@ import type { MeshData } from '../geometry/types';
 import { useServices } from '../integration';
 import { useStore } from '../state/store';
 import { downloadBlob as saveBlob, safeFileName } from '../services/download';
+import { safeGeometryKey } from '../services/exporter';
 
 /** 3D preview of the selected item (requires exporter + Preview3D services). */
 export function PreviewPane() {
@@ -14,10 +15,10 @@ export function PreviewPane() {
   const [result, setResult] = useState<{ key: string; itemId: string; mesh: MeshData | null; error: string | null } | null>(null);
 
   const item = project.items.find((i) => i.id === selectedId);
-  // Only geometry-relevant inputs should trigger a rebuild (not x/y/label).
-  const key = item
-    ? JSON.stringify([item.id, item.type, item.params, item.wall, item.floor, project.settings.defaults, kernelReady])
-    : '';
+  // Only geometry-relevant inputs should trigger a rebuild (not x/y/label):
+  // the exporter's geometryKey, which includes the build context (e.g. the
+  // items a platform's ridges are based on).
+  const key = item ? JSON.stringify([item.id, safeGeometryKey(project, item), kernelReady]) : '';
   const enabled = !!(exporter && Preview3D && selectedId && key);
 
   useEffect(() => {

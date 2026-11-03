@@ -20,8 +20,17 @@ export function sampleProject(): Project {
     { id: 'sample-divided', type: 'divided-tray', label: 'Resources', x: 70, y: 1, rotation: 0, params: { columns: 3, rows: 2 } },
     // 68.7 × 93.2 × 31.2
     { id: 'sample-cards-flat', type: 'card-tray', label: 'Cards (flat)', x: 1, y: 70, rotation: 0, params: { orientation: 'flat' } },
-    // 34.2 × 68.7 × 69.2
-    { id: 'sample-cards-upright', type: 'card-tray', label: 'Cards (upright)', x: 80, y: 70, rotation: 0, params: { orientation: 'upright' } },
+    // Mini cards (41 × 63) standing: 34.2 × 46.2 × 49.2, the cards reach 64.2 (< 70).
+    // Standard 88 mm cards cannot stand in a 70 mm box (the stack fit check flags them).
+    {
+      id: 'sample-cards-upright',
+      type: 'card-tray',
+      label: 'Mini cards (upright)',
+      x: 80,
+      y: 70,
+      rotation: 0,
+      params: { orientation: 'upright', cardWidth: 41, cardHeight: 63, exposedHeight: 15 },
+    },
     // 20 × 40 × 30
     { id: 'sample-spacer', type: 'spacer', label: 'Spacer', x: 120, y: 70, rotation: 0, params: {} },
     // Lip / recess pair. 63.2 × 43.2 × 33.2 (31.2 + 2 mm lip)

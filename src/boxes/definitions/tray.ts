@@ -3,6 +3,8 @@ import type { ResolvedItem } from '../../model/types';
 import type { Solid } from '../../geometry/types';
 import {
   bool,
+  cavityBaseFeatures,
+  cavityBearingAreas,
   notchCutter,
   notchRect,
   num,
@@ -12,6 +14,7 @@ import {
   stackedOpenBox,
   stacking,
   stackingParams,
+  stackingNewItemParams,
   stackNotches,
   str,
   validateNotch,
@@ -102,6 +105,7 @@ export const tray: BoxTypeDefinition = {
     },
     ...stackingParams,
   ],
+  newItemParams: { ...stackingNewItemParams },
 
   footprint(item) {
     const d = dims(item);
@@ -143,4 +147,14 @@ export const tray: BoxTypeDefinition = {
   },
 
   stackEngagement,
+
+  bearingAreas(item) {
+    const d = dims(item);
+    return cavityBearingAreas(d.iw + 2 * d.wall, d.id + 2 * d.wall, d.wall, d.floor, d.ih, d.stack);
+  },
+
+  baseFeatures(item) {
+    const d = dims(item);
+    return cavityBaseFeatures(d.iw + 2 * d.wall, d.id + 2 * d.wall, d.wall, d.stack);
+  },
 };

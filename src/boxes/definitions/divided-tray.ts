@@ -3,6 +3,8 @@ import type { ResolvedItem } from '../../model/types';
 import type { Solid } from '../../geometry/types';
 import {
   bool,
+  cavityBaseFeatures,
+  cavityBearingAreas,
   EPS,
   notchCutter,
   notchRect,
@@ -13,6 +15,7 @@ import {
   stackedOpenBox,
   stacking,
   stackingParams,
+  stackingNewItemParams,
   stackNotches,
   validateNotch,
   validateStacking,
@@ -130,6 +133,7 @@ export const dividedTray: BoxTypeDefinition = {
     },
     ...stackingParams,
   ],
+  newItemParams: { ...stackingNewItemParams },
 
   footprint(item) {
     const L = layout(item);
@@ -216,4 +220,21 @@ export const dividedTray: BoxTypeDefinition = {
   },
 
   stackEngagement,
+
+  /** Walls (see cavityBearingAreas) plus the dividers; dividers lower than the walls carry nothing ('low'). */
+  bearingAreas(item) {
+    const L = layout(item);
+    const areas = cavityBearingAreas(L.iw + 2 * L.wall, L.id + 2 * L.wall, L.wall, L.floor, L.ih, L.stack);
+    if (!(L.t > 0)) return areas;
+    const height = L.stack.plugH + L.floor + L.dh;
+    const role = L.dh >= L.ih - 1e-9 ? ('bearing' as const) : ('low' as const);
+    for (let i = 1; i < L.cols; i++) areas.push({ x: L.colX(i), y: L.wall, width: L.t, depth: L.id, height, role, name: 'divider' });
+    for (let j = 1; j < L.rows; j++) areas.push({ x: L.wall, y: L.rowY(j), width: L.iw, depth: L.t, height, role, name: 'divider' });
+    return areas;
+  },
+
+  baseFeatures(item) {
+    const L = layout(item);
+    return cavityBaseFeatures(L.iw + 2 * L.wall, L.id + 2 * L.wall, L.wall, L.stack);
+  },
 };
