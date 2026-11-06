@@ -1,5 +1,5 @@
 /**
- * Imperative three.js scene for the Assembly view (later: the 3D editor).
+ * Imperative three.js scene for the 3D editor (and the read‑only assembly view).
  *
  * The three.js world is the game box frame itself — no root mirroring — so
  * hit points, positions and matrices are all game‑frame values. How the frame
@@ -39,6 +39,8 @@ export interface AssemblyEntry {
   size: { width: number; depth: number; height: number };
   tint: ItemTint;
   selected: boolean;
+  /** Drawn translucent and skipped by picking (items above the selection). */
+  faded?: boolean;
 }
 
 /** Result of `pickItemAt`: the item hit and the hit point in the game box frame. */
@@ -56,10 +58,15 @@ export interface AssemblySceneApi {
   setBox(box: BoxDimensions, usable: Rect): void;
   /** Re‑apply the current preset, framing the whole game box. */
   fit(): void;
+  /**
+   * Height (mm) the camera fit must include besides the game box (e.g. the
+   * exploded view's top). Re‑fits unless the user moved the camera.
+   */
+  setFitHeight(h: number): void;
   setPreset(preset: CameraPreset): void;
   getPreset(): CameraPreset;
   resize(w: number, h: number): void;
-  /** Topmost item under the cursor (client/CSS pixel coords), or null. */
+  /** Topmost non‑faded item under the cursor (client/CSS pixel coords), or null. */
   pickItemAt(clientX: number, clientY: number): ItemPick | null;
   /** Game‑frame x/y where the cursor ray meets the horizontal plane at height z; null if it misses. */
   screenToPlane(clientX: number, clientY: number, z: number): { x: number; y: number } | null;
@@ -127,12 +134,13 @@ export function createAssemblyScene(host: HTMLDivElement, opts: AssemblySceneOpt
   itemGroup.add(outline);
 
   const materials = new Map<string, THREE.Material>();
-  function material(tint: ItemTint, selected: boolean, placeholder: boolean): THREE.Material {
-    const k = `${tint}|${selected}|${placeholder}`;
+  function material(tint: ItemTint, selected: boolean, placeholder: boolean, faded: boolean): THREE.Material {
+    const k = `${tint}|${selected}|${placeholder}|${faded}`;
     let m = materials.get(k);
     if (!m) {
       const color = new THREE.Color(COLORS[tint]);
       if (selected) color.lerp(new THREE.Color(0xffffff), 0.25);
+      const see = placeholder || faded;
       m = new THREE.MeshStandardMaterial({
         color,
         roughness: 0.7,
@@ -140,10 +148,11 @@ export function createAssemblyScene(host: HTMLDivElement, opts: AssemblySceneOpt
         flatShading: true,
         emissive: selected ? new THREE.Color(SELECT_COLOR) : new THREE.Color(0x000000),
         emissiveIntensity: selected ? 0.28 : 0,
-        transparent: placeholder,
-        opacity: placeholder ? 0.4 : 1,
-        depthWrite: !placeholder,
-        side: placeholder ? THREE.DoubleSide : THREE.FrontSide,
+        transparent: see,
+        // Faded: still tinted (problem colours stay recognisable), but see‑through.
+        opacity: faded ? (placeholder ? 0.14 : 0.2) : placeholder ? 0.4 : 1,
+        depthWrite: !see,
+        side: see ? THREE.DoubleSide : THREE.FrontSide,
       });
       materials.set(k, m);
     }
@@ -192,7 +201,10 @@ export function createAssemblyScene(host: HTMLDivElement, opts: AssemblySceneOpt
         obj.geometry = unitBox;
         obj.matrix.copy(tmp).multiply(scaleM.makeScale(e.size.width, e.size.depth, h));
       }
-      obj.material = material(e.tint, e.selected, !e.mesh);
+      obj.material = material(e.tint, e.selected, !e.mesh, !!e.faded && !e.selected);
+      obj.userData.faded = !!e.faded && !e.selected;
+      // Translucent items draw after the solid ones.
+      obj.renderOrder = obj.userData.faded ? 2 : 0;
       obj.matrixWorldNeedsUpdate = true;
       if (e.selected) {
         outline.matrix.copy(tmp).multiply(scaleM.makeScale(e.size.width, e.size.depth, h));
@@ -223,6 +235,8 @@ export function createAssemblyScene(host: HTMLDivElement, opts: AssemblySceneOpt
   let boxDims: BoxDimensions = { width: 1, depth: 1, height: 1 };
   let wallT = 1;
   let fittedKey = '';
+  /** Extra content height the fit must include (exploded view). */
+  let fitHeight = 0;
 
   function clearBox() {
     for (const child of [...boxGroup.children]) {
@@ -315,7 +329,8 @@ export function createAssemblyScene(host: HTMLDivElement, opts: AssemblySceneOpt
 
   /** Apply the current preset's pose (framing the game box) and rebuild the controls. */
   function fit() {
-    const pose = presetPose(preset, boxDims, aspect, { fovDeg: FOV, orientation, wallMargin: wallT });
+    const frame = { ...boxDims, height: Math.max(boxDims.height, fitHeight) };
+    const pose = presetPose(preset, frame, aspect, { fovDeg: FOV, orientation, wallMargin: wallT });
     camera = pose.ortho ? ortho : persp;
     camera.up.set(...pose.up);
     camera.position.set(...pose.position);
@@ -349,7 +364,8 @@ export function createAssemblyScene(host: HTMLDivElement, opts: AssemblySceneOpt
 
   function pickItemAt(clientX: number, clientY: number): ItemPick | null {
     setRay(clientX, clientY);
-    const hit = raycaster.intersectObjects([...objects.values()], false)[0];
+    const pickable = [...objects.values()].filter((o) => !o.userData.faded);
+    const hit = raycaster.intersectObjects(pickable, false)[0];
     const id = hit?.object.userData.itemId as string | undefined;
     if (!hit || !id) return null;
     let normal: ItemPick['normal'] = null;
@@ -424,6 +440,7 @@ export function createAssemblyScene(host: HTMLDivElement, opts: AssemblySceneOpt
         return {
           id,
           placeholder: obj.geometry === unitBox,
+          faded: !!obj.userData.faded,
           color: `#${(obj.material as THREE.MeshStandardMaterial).color.getHexString()}`,
           x: r(b.min.x), y: r(b.min.y), z: r(b.min.z), width: r(b.max.x - b.min.x), depth: r(b.max.y - b.min.y), height: r(b.max.z - b.min.z),
           screen: { x: rect.left + ((top.x + 1) / 2) * rect.width, y: rect.top + ((1 - top.y) / 2) * rect.height },
@@ -437,6 +454,12 @@ export function createAssemblyScene(host: HTMLDivElement, opts: AssemblySceneOpt
     setEntries,
     setBox,
     fit,
+    setFitHeight(h) {
+      const next = Number.isFinite(h) && h > 0 ? h : 0;
+      if (next === fitHeight) return;
+      fitHeight = next;
+      if (!userMoved) fit();
+    },
     setPreset(p) {
       preset = p;
       fit();

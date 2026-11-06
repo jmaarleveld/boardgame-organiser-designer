@@ -19,6 +19,7 @@
 .assembly-presets button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
 .assembly-presets button:last-child { border-radius: 0 4px 4px 0; }
 .assembly-presets button.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+.assembly-controls > button.active { background: #dbe7fd; border-color: #2563eb; color: #1e3a8a; }
 .assembly-canvas canvas { touch-action: none; }
 
 /* ---- 3D editor (centre pane) ---- */

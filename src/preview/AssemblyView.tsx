@@ -5,6 +5,7 @@ import type { Rect, SnapGuide } from '../model/layout';
 import { layoutSummary, safeItemRect } from '../model/layout';
 import type { DragPlane, DragSession } from '../model/drag';
 import { chooseDragPlane, dragDelta, dragPlanePoint, dragStep, gapLabels, startDragSession } from '../model/drag';
+import { explodeOffsets, fadedItemIds } from '../model/stackView';
 import { findBoxType } from '../boxes/registry';
 import { BOX_TYPE_MIME } from '../ui/dnd';
 import type { AssemblyViewProps } from '../services/contracts';
@@ -31,6 +32,8 @@ interface AssemblyCanvasProps {
   usable: Rect;
   /** Increment to re‑fit the camera to the box. */
   fitToken: number;
+  /** Content height the camera fit must include besides the box (exploded view); 0 = box only. */
+  fitHeight?: number;
   /** Camera preset; changing it re‑frames the game box. */
   preset?: CameraPreset;
   /** Built‑in click picking; omit when the caller handles the pointer itself (editor). */
@@ -40,15 +43,19 @@ interface AssemblyCanvasProps {
 }
 
 /** three.js viewer for a whole assembly (on‑demand rendering). */
-export function AssemblyCanvas({ entries, box, usable, fitToken, preset = 'iso', onPick, onReady }: AssemblyCanvasProps) {
+export function AssemblyCanvas({ entries, box, usable, fitToken, fitHeight = 0, preset = 'iso', onPick, onReady }: AssemblyCanvasProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<AssemblySceneApi | null>(null);
-  const latest = useRef({ entries, box, usable, preset, onPick, onReady });
+  const latest = useRef({ entries, box, usable, preset, fitHeight, onPick, onReady });
   const [webglError, setWebglError] = useState<string | null>(null);
 
   useEffect(() => {
-    latest.current = { entries, box, usable, preset, onPick, onReady };
+    latest.current = { entries, box, usable, preset, fitHeight, onPick, onReady };
   });
+
+  useEffect(() => {
+    sceneRef.current?.setFitHeight(fitHeight);
+  }, [fitHeight]);
 
   useEffect(() => {
     sceneRef.current?.setEntries(entries);
@@ -86,7 +93,8 @@ export function AssemblyCanvas({ entries, box, usable, fitToken, preset = 'iso',
     const resize = () => s.resize(Math.max(host.clientWidth, 1), Math.max(host.clientHeight, 1));
     const ro = new ResizeObserver(resize);
     ro.observe(host);
-    const { box: b, usable: u, entries: en } = latest.current;
+    const { box: b, usable: u, entries: en, fitHeight: fh } = latest.current;
+    s.setFitHeight(fh);
     resize();
     s.setBox(b, u);
     s.setEntries(en);
@@ -139,6 +147,10 @@ export default function AssemblyView({ className, onPopOut, onClose, editable = 
   const [api, setApi] = useState<AssemblySceneApi | null>(null);
   const [dragging, setDragging] = useState<{ session: DragSession; guides: SnapGuide[] } | null>(null);
   const [dropHover, setDropHover] = useState(false);
+  /** Items stacked over the selection turn see‑through and click‑through. */
+  const [fadeAbove, setFadeAbove] = useState(true);
+  /** Display‑only: lift each item by its stack level × EXPLODE_GAP. */
+  const [exploded, setExploded] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<EditorDrag | null>(null);
   const { items, settings } = project;
@@ -147,21 +159,36 @@ export default function AssemblyView({ className, onPopOut, onClose, editable = 
   const summary = useMemo(() => layoutSummary(items, settings), [items, settings]);
   const tints = useMemo(() => classifyItems(items, settings, summary), [items, settings, summary]);
   const { itemKeys, meshes: cached } = meshes;
+  const faded = useMemo(
+    () => (editable && fadeAbove ? fadedItemIds(items, settings, selectedId) : new Set<string>()),
+    [editable, fadeAbove, items, settings, selectedId],
+  );
+  const offsets = useMemo(() => (exploded ? explodeOffsets(items, settings) : null), [exploded, items, settings]);
+  /** Displayed (exploded) bottom z of an item; model z when not exploded. */
+  const displayZ = (id: string, z: number) => z + (offsets?.get(id) ?? 0);
+  const fitHeight = useMemo(() => {
+    if (!offsets) return 0;
+    let top = 0;
+    for (const item of items) top = Math.max(top, safeItemRect(item, settings, items).top + (offsets.get(item.id) ?? 0));
+    return top;
+  }, [offsets, items, settings]);
   const entries = useMemo<AssemblyEntry[]>(
     () =>
       items.map((item) => {
         const size = localSize(item, settings, items);
         const key = itemKeys.get(item.id) ?? null;
+        const off = offsets?.get(item.id) ?? 0;
         return {
           id: item.id,
           mesh: (key !== null && cached.byKey.get(key)) || null,
-          matrix: placementMatrix(item, size.depth),
+          matrix: placementMatrix(off ? { ...item, z: (item.z ?? 0) + off } : item, size.depth),
           size,
           tint: tints.get(item.id) ?? 'normal',
           selected: item.id === selectedId,
+          faded: faded.has(item.id),
         };
       }),
-    [items, settings, tints, selectedId, itemKeys, cached],
+    [items, settings, tints, selectedId, itemKeys, cached, faded, offsets],
   );
 
   const failed = items.filter((i) => meshes.errorFor(itemKeys.get(i.id) ?? null)).length;
@@ -258,7 +285,8 @@ export default function AssemblyView({ className, onPopOut, onClose, editable = 
     const moving = new Set(dragging.session.movingIds);
     const others = items.filter((i) => !moving.has(i.id)).map((i) => safeItemRect(i, settings, items));
     const gaps = gapLabels(r, others, summary.usable).filter((g) => Math.abs(g.distance) >= 0.05);
-    const z = r.z;
+    // Labels sit at the item's displayed height (exploded or not).
+    const z = displayZ(dragItem.id, r.z);
     const proj = (x: number, y: number) => api.projectToCanvas(x, y, z);
     const lines: ReactNode[] = [];
     const labels: ReactNode[] = [];
@@ -318,6 +346,7 @@ export default function AssemblyView({ className, onPopOut, onClose, editable = 
         box={settings.box}
         usable={summary.usable}
         fitToken={fitToken}
+        fitHeight={fitHeight}
         preset={preset}
         onPick={editable ? undefined : select}
         onReady={setApi}
@@ -342,6 +371,28 @@ export default function AssemblyView({ className, onPopOut, onClose, editable = 
         <button type="button" onClick={() => setFitToken((t) => t + 1)} title="Fit the camera to the game box">
           Fit
         </button>
+        {editable && (
+          <>
+            <button
+              type="button"
+              className={fadeAbove ? 'active' : undefined}
+              aria-pressed={fadeAbove}
+              onClick={() => setFadeAbove((v) => !v)}
+              title="Make the items stacked over the selected item see‑through and click‑through"
+            >
+              Fade above
+            </button>
+            <button
+              type="button"
+              className={exploded ? 'active' : undefined}
+              aria-pressed={exploded}
+              onClick={() => setExploded((v) => !v)}
+              title="Lift every stack level apart (display only; dragging still works)"
+            >
+              Exploded
+            </button>
+          </>
+        )}
         {onPopOut && (
           <button type="button" onClick={onPopOut} title="Open the assembly in a larger view">
             Pop out
