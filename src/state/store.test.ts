@@ -9,7 +9,10 @@ import { cardTray } from '../boxes/definitions/card-tray';
 import { spacer } from '../boxes/definitions/spacer';
 import { platform } from '../boxes/definitions/platform';
 import { defaultParams } from '../boxes/types';
-import { HISTORY_LIMIT, useStore } from './store';
+import { HISTORY_LIMIT, migrateStackOrder, useStore } from './store';
+import { registerAllBoxTypes } from '../boxes/index';
+import { createPersistence } from '../services/persistence';
+import { readFileSync } from 'node:fs';
 
 const st = () => useStore.getState();
 const items = () => st().project.items;
@@ -137,49 +140,220 @@ describe('store', () => {
     expect(items()).toHaveLength(0);
   });
 
-  it('setElevation clamps, rounds, clears at 0 and is undoable', () => {
+  it('z is derived by gravity: a stale z is replaced on every change', () => {
     const id = st().addItem('fake');
-    st().setElevation(id, 12.34567);
-    expect(items()[0].z).toBe(12.346);
-    st().setElevation(id, -4);
+    st().updateItem(id, { z: 12.34567 });
+    expect('z' in items()[0]).toBe(false);
+    const b = st().addItem('fake');
+    st().updateItem(b, { x: items()[0].x, y: items()[0].y, z: 99 });
+    expect(items()[1].z).toBe(10);
+    // Removing what it rests on drops it to the floor.
+    st().removeItem(id);
     expect('z' in items()[0]).toBe(false);
     st().undo();
-    expect(items()[0].z).toBe(12.346);
+    expect(items()[1].z).toBe(10);
   });
 
-  it('stackOnBelow rests an item on what it overlaps (with engagement) or drops it to the floor', () => {
+  it('moving an item onto another makes it rest on it (with engagement); moving it off drops it', () => {
     const a = st().addItem('fake'); // 40×20×10
     const b = st().addItem('fake');
     const [ia, ib] = items();
-    st().updateItem(b, { x: ia.x, y: ia.y, z: 50, params: { ...ib.params, e: 2 } });
-    st().stackOnBelow(b);
-    expect(items()[1].z).toBe(8);
+    st().setParam(b, 'e', 2);
+    expect('z' in ib).toBe(false);
+    st().moveItem(b, ia.x, ia.y);
+    expect(items()[1]).toMatchObject({ id: b, z: 8 });
     expect(findOverlaps(items(), st().project.settings)).toEqual([]);
     st().moveItem(b, 150, 60);
-    st().stackOnBelow(b);
     expect('z' in items()[1]).toBe(false);
-    expect(a).not.toBe(b);
+    // A moved item goes on top: moving the lower one under it lifts it onto b.
+    st().moveItem(a, 150, 60);
+    expect(items().map((i) => i.id)).toEqual([b, a]);
+    expect(items()[1].z).toBe(10);
   });
 
-  it('duplicateItemStacked puts a copy on top: same x/y, z = top − engagement, level label', () => {
+  it('duplicateItemStacked inserts a copy right after the source: same x/y, rests on it, level label', () => {
     const id = st().addItem('fake');
+    const other = st().addItem('fake');
     const copyId = st().duplicateItemStacked(id)!;
+    expect(items().map((i) => i.id)).toEqual([id, copyId, other]);
     const copy = items()[1];
     expect(copy).toMatchObject({ id: copyId, x: items()[0].x, y: items()[0].y, z: 10, label: 'Tray 1 (level 2)' });
     expect(st().selectedId).toBe(copyId);
     const third = st().duplicateItemStacked(copyId)!;
     expect(items().find((i) => i.id === third)).toMatchObject({ z: 20, label: 'Tray 1 (level 3)' });
-    // With engagement the copy sinks into the source.
-    st().updateItem(third, { params: { ...items()[2].params, e: 2 } });
-    st().stackOnBelow(third);
-    expect(items()[2].z).toBe(18);
+    // With engagement the copy sinks into the source (re-settled automatically).
+    st().setParam(third, 'e', 2);
+    expect(items().find((i) => i.id === third)?.z).toBe(18);
     const fourth = st().duplicateItemStacked(third)!;
     expect(items().find((i) => i.id === fourth)?.z).toBe(26);
     expect(findOverlaps(items(), st().project.settings)).toEqual([]);
     expect(unsupportedItems(items(), st().project.settings)).toEqual([]);
+    // Duplicating the bottom one inserts into the stack: everything above moves up.
+    st().duplicateItemStacked(id);
+    expect(items().find((i) => i.id === fourth)?.z).toBe(36);
     // A plain duplicate goes back to the floor level.
     const flat = st().duplicateItem(copyId)!;
     expect('z' in items().find((i) => i.id === flat)!).toBe(false);
+  });
+
+  describe('moveStack', () => {
+    /** a (floor) ← b ← c, plus d on the floor elsewhere. */
+    const tower = () => {
+      const a = st().addItem('fake', { x: 50, y: 50 });
+      const b = st().duplicateItemStacked(a)!;
+      const c = st().duplicateItemStacked(b)!;
+      const d = st().addItem('fake', { x: 200, y: 50 });
+      return { a, b, c, d };
+    };
+    const byId = (id: string) => items().find((i) => i.id === id)!;
+
+    it('with carry moves the item and everything on it, and puts them on top of the order', () => {
+      const { a, b, c, d } = tower();
+      st().moveStack(a, 100, 10, { carry: true });
+      expect(items().map((i) => i.id)).toEqual([d, a, b, c]);
+      expect(byId(a)).toMatchObject({ x: 130, y: 50 });
+      expect(byId(b)).toMatchObject({ x: 130, y: 50, z: 10 });
+      expect(byId(c)).toMatchObject({ x: 130, y: 50, z: 20 });
+      // Over d, the whole stack lands on top of it.
+      expect('z' in byId(a)).toBe(false);
+      st().moveStack(a, 50, 0, { carry: true });
+      expect(byId(a).z).toBe(10);
+      expect(byId(c).z).toBe(30);
+    });
+
+    it('moving a middle item takes only what is above it', () => {
+      const { a, b, c } = tower();
+      st().moveStack(b, 0, 100, { carry: true });
+      expect('z' in byId(a)).toBe(false);
+      expect('z' in byId(b)).toBe(false);
+      expect(byId(c)).toMatchObject({ y: 140, z: 10 });
+    });
+
+    it('without carry pulls the item out; what was on it drops and re-settles', () => {
+      const { a, b, c } = tower();
+      st().moveStack(a, 0, 100, { carry: false });
+      expect(items().map((i) => i.id).slice(-1)).toEqual([a]);
+      expect(byId(a)).toMatchObject({ x: 30, y: 140 });
+      expect('z' in byId(a)).toBe(false);
+      expect('z' in byId(b)).toBe(false);
+      expect(byId(c)).toMatchObject({ x: 30, y: 40, z: 10 });
+      // Pulled only half way out it ends on top of what stayed.
+      st().undo();
+      st().moveStack(a, 20, 0, { carry: false });
+      expect(byId(b).z).toBeUndefined();
+      expect(byId(c).z).toBe(10);
+      expect(byId(a).z).toBe(20);
+    });
+
+    it('a bridge stays (and re-settles) when one of its supporters stays behind', () => {
+      const l = st().addItem('fake', { x: 50, y: 50 }); // 30..70 × 40..60, h 10
+      const r = st().addItem('fake', { x: 90, y: 50 }); // 70..110
+      const x = st().addItem('fake', { x: 70, y: 50 }); // 50..90, on both
+      expect(byId(x).z).toBe(10);
+      st().moveStack(l, 0, 100, { carry: true });
+      expect(byId(l)).toMatchObject({ y: 140 });
+      expect(byId(x)).toMatchObject({ x: 50, y: 40, z: 10 }); // still on r
+      // Now it rests on r alone: moving r carries it; pulling r out drops it.
+      st().moveStack(r, 0, 100, { carry: true });
+      expect(byId(x)).toMatchObject({ y: 140, z: 10 });
+      st().undo();
+      st().moveStack(r, 0, 100, { carry: false });
+      expect(byId(x)).toMatchObject({ x: 50, y: 40 });
+      expect(byId(x).z).toBeUndefined();
+    });
+
+    it('carries a bridge whose supporters all move', () => {
+      const base = st().addItem('fake', { x: 70, y: 50 });
+      st().setParam(base, 'w', 80);
+      const l = st().addItem('fake', { x: 50, y: 50 });
+      const r = st().addItem('fake', { x: 90, y: 50 });
+      const x = st().addItem('fake', { x: 70, y: 50 });
+      expect([byId(l).z, byId(r).z, byId(x).z]).toEqual([10, 10, 20]);
+      st().moveStack(base, 0, 100, { carry: true });
+      expect(byId(x)).toMatchObject({ y: 140, z: 20 });
+    });
+
+    it('a zero move or an unknown id changes nothing', () => {
+      const { a } = tower();
+      const before = st().project;
+      const pastLen = st().past.length;
+      st().moveStack(a, 0, 0, { carry: true });
+      st().moveStack('nope', 5, 5, { carry: true });
+      expect(st().project).toBe(before);
+      expect(st().past.length).toBe(pastLen);
+    });
+
+    it('a drag of a stack (many moveStack calls) is one undo step', () => {
+      const { a, b, c, d } = tower();
+      const order = items().map((i) => i.id);
+      const pastLen = st().past.length;
+      st().beginDrag();
+      for (let i = 1; i <= 15; i++) st().moveStack(a, 10, 0, { carry: true });
+      st().endDrag();
+      expect(st().past.length).toBe(pastLen + 1);
+      expect(byId(c)).toMatchObject({ x: 180, z: 30 }); // ended up on d
+      st().undo();
+      expect(items().map((i) => i.id)).toEqual(order);
+      expect(byId(a)).toMatchObject({ x: 30 });
+      expect(byId(c).z).toBe(20);
+      expect([a, b, d].map((id) => byId(id).z ?? 0)).toEqual([0, 10, 0]);
+      st().redo();
+      expect(byId(c)).toMatchObject({ x: 180, z: 30 });
+    });
+  });
+
+  it('reorderItem changes the stack order and re-settles', () => {
+    const a = st().addItem('fake', { x: 50, y: 50 });
+    const b = st().duplicateItemStacked(a)!;
+    st().setParam(b, 'h', 5);
+    expect(items()[1]).toMatchObject({ id: b, z: 10 });
+    st().reorderItem(b, 0);
+    expect(items().map((i) => i.id)).toEqual([b, a]);
+    expect('z' in items()[0]).toBe(false);
+    expect(items()[1].z).toBe(5);
+    // Clamped; a no‑op adds no history.
+    const pastLen = st().past.length;
+    st().reorderItem(b, -3);
+    expect(st().past.length).toBe(pastLen);
+    st().reorderItem(b, 99);
+    expect(items().map((i) => i.id)).toEqual([a, b]);
+    st().undo();
+    expect(items().map((i) => i.id)).toEqual([b, a]);
+  });
+
+  describe('loading old projects (z → stack order)', () => {
+    it('sorts by stored z (stable) and settles', () => {
+      const p = createEmptyProject();
+      const fake = (id: string, x: number, z?: number) => ({
+        id,
+        type: 'fake',
+        label: id,
+        x,
+        y: 10,
+        rotation: 0 as const,
+        params: {},
+        ...(z === undefined ? {} : { z }),
+      });
+      // Stored top‑down, and with a stale z for 'mid'.
+      p.items.push(fake('top', 10, 20), fake('mid', 10, 12), fake('bottom', 10), fake('side', 100));
+      st().loadProject(p);
+      expect(items().map((i) => i.id)).toEqual(['bottom', 'side', 'mid', 'top']);
+      expect(items().map((i) => i.z ?? 0)).toEqual([0, 0, 10, 20]);
+      expect(migrateStackOrder(st().project)).toBe(st().project);
+    });
+
+    it('examples/stacking-demo.json keeps its z values (except the deliberately sunk K2)', () => {
+      clearRegistry();
+      registerAllBoxTypes();
+      const file = createPersistence({} as Storage).fromJson(readFileSync('examples/stacking-demo.json', 'utf8'));
+      st().loadProject(file);
+      const loaded = new Map(items().map((i) => [i.id, i.z ?? 0]));
+      expect(loaded.size).toBe(file.items.length);
+      const changed = file.items.filter((i) => loaded.get(i.id) !== (i.z ?? 0)).map((i) => [i.id, i.z, loaded.get(i.id)]);
+      // K2 is stored at z = 15, sunk into K1 to demonstrate the intersection
+      // error. Gravity cannot express that: it now rests on K1's top.
+      expect(changed).toEqual([['k2', 15, 31.2]]);
+    });
   });
 
   describe('creation-time stacking params', () => {
@@ -231,9 +405,9 @@ describe('store', () => {
     st().setParam(id, 'stackTop', 'none');
     const copy = st().duplicateItemStacked(id)!;
     expect(items().find((i) => i.id === copy)?.z).toBeCloseTo(31.2, 9);
+    // Adding a lip to both: the copy re-settles with its recess on the lip.
     st().setParam(id, 'stackTop', 'lip');
     st().setParam(copy, 'stackTop', 'lip');
-    st().stackOnBelow(copy);
     expect(items().find((i) => i.id === copy)?.z).toBeCloseTo(31.2, 9); // 33.2 − 2
     const third = st().duplicateItemStacked(copy)!;
     expect(items().find((i) => i.id === third)?.z).toBeCloseTo(62.4, 9);

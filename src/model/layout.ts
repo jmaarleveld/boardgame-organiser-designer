@@ -267,6 +267,100 @@ export function restingElevation(itemId: string, items: PlacedItem[], settings: 
   return z;
 }
 
+/* ---------------------------------------------------------------- gravity */
+
+const round3 = (v: number) => Math.round(v * 1000) / 1000;
+
+/** `item` with bottom elevation `z` (rounded, ≥ 0; 0 deletes the field); the same object when unchanged. */
+export function withElevation(item: PlacedItem, z: number): PlacedItem {
+  const nz = Number.isFinite(z) ? Math.max(0, round3(z)) : 0;
+  if (item.z === nz && nz !== 0) return item;
+  if (nz === 0 && item.z === undefined) return item;
+  const next: PlacedItem = { ...item, z: nz };
+  if (nz === 0) delete next.z;
+  return next;
+}
+
+/** One settle pass on stack rects computed from `items` (current z values). */
+function settlePass(items: PlacedItem[], settings: ProjectSettings): PlacedItem[] {
+  const rects = stackRects(items, settings);
+  let out: PlacedItem[] | null = null;
+  for (let i = 0; i < items.length; i++) {
+    const r = rects[i];
+    let z = 0;
+    for (let j = 0; j < i; j++) {
+      const o = rects[j];
+      if (rectsOverlap(o, r)) z = Math.max(z, o.top - engagementOn(r, o));
+    }
+    const next = withElevation(items[i], z);
+    if (next === items[i]) continue;
+    out ??= items.slice();
+    out[i] = next;
+    const nz = elevationOf(next);
+    rects[i] = { ...r, z: nz, top: nz + r.height };
+  }
+  return out ?? items;
+}
+
+/**
+ * Gravity (DESIGN.md §2): the stack order is the order of `items`; every item
+ * rests on the highest effective surface among the *earlier* items it
+ * overlaps in XY — max of `o.top − engagement(item on o)` (lip / recess /
+ * plug, platform ridges), or the floor (0). Returns the items with their
+ * cached `z` updated (rounded to 0.001 mm, 0 ⇒ field deleted). Unchanged items
+ * keep their identity, and when nothing changes the input array itself is
+ * returned.
+ *
+ * Context‑dependent heights (platform ridges depend on what rests on the
+ * platform) are handled by repeating the pass until nothing changes; the
+ * effective surface of a ridged platform does not depend on its ridges, so
+ * this converges in one or two passes.
+ */
+export function settle(items: PlacedItem[], settings: ProjectSettings): PlacedItem[] {
+  let cur = items;
+  for (let pass = 0; pass < 8; pass++) {
+    const next = settlePass(cur, settings);
+    if (next === cur) break;
+    cur = next;
+  }
+  return cur;
+}
+
+/**
+ * For settled items: the ids of the items each item rests on (its supporters,
+ * see `stackFit`), only among earlier items. Items on the floor map to [].
+ */
+export function supportersById(items: PlacedItem[], settings: ProjectSettings): Map<string, string[]> {
+  const rects = stackRects(items, settings);
+  const out = new Map<string, string[]>();
+  items.forEach((item, idx) => {
+    const sup = rects[idx].z > EPS ? supportersOf(rects, idx).filter((j) => j < idx) : [];
+    out.set(
+      item.id,
+      sup.map((j) => items[j].id),
+    );
+  });
+  return out;
+}
+
+/**
+ * For settled items: `id` plus every item resting on it, directly or
+ * transitively — what moves along when the item is dragged with its stack.
+ * An item resting on several items (a bridge) is included only when all of
+ * its supporters are. Returned in array (stack) order; [] for unknown ids.
+ */
+export function carriedItemIds(items: PlacedItem[], settings: ProjectSettings, id: string): string[] {
+  const idx = items.findIndex((i) => i.id === id);
+  if (idx < 0) return [];
+  const supporters = supportersById(items, settings);
+  const set = new Set([id]);
+  for (let k = idx + 1; k < items.length; k++) {
+    const sup = supporters.get(items[k].id) ?? [];
+    if (sup.length && sup.every((s) => set.has(s))) set.add(items[k].id);
+  }
+  return items.filter((i) => set.has(i.id)).map((i) => i.id);
+}
+
 export function itemsOutsideUsable(items: PlacedItem[], settings: ProjectSettings): string[] {
   const usable = usableArea(settings);
   return items.filter((i) => !rectInside(safeItemRect(i, settings, items), usable)).map((i) => i.id);
@@ -846,7 +940,7 @@ export function layoutSummary(items: PlacedItem[], settings: ProjectSettings): L
       } else {
         message =
           `${A} collides with the ${what} of ${S}, which reach into its ${c.part}. ` +
-          `Use "Rest on items below" or move ${A}.`;
+          `Move ${A} or change its base.`;
       }
       issues.push({ severity: 'error', kind: 'stack-fit', itemIds: [id, c.supporterId], message });
     }

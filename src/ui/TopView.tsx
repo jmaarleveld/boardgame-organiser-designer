@@ -6,7 +6,7 @@ import type { TopViewFeature } from '../boxes/types';
 import { resolveItem } from '../model/resolve';
 import type { PlacedItem, ProjectSettings } from '../model/types';
 import type { ItemRect, LayoutSummary, Rect, SnapGuide } from '../model/layout';
-import { boundingBox, errorItemIds, safeItemRect, snapPosition, usableArea, warningItemIds } from '../model/layout';
+import { boundingBox, carriedItemIds, errorItemIds, safeItemRect, snapPosition, usableArea, warningItemIds } from '../model/layout';
 import { BOX_TYPE_MIME } from './dnd';
 
 /** View = centre (mm) + scale (mm per screen px). viewBox is derived from the element size. */
@@ -29,6 +29,8 @@ interface DragState {
   itemStart: { x: number; y: number };
   size: { width: number; depth: number };
   others: Rect[];
+  /** Move the items stacked on it along (false: Alt held at drag start — pull it out from under its stack). */
+  carry: boolean;
   moved: boolean;
 }
 
@@ -65,7 +67,7 @@ export function TopView({ summary }: { summary: LayoutSummary }) {
   const project = useStore((s) => s.project);
   const selectedId = useStore((s) => s.selectedId);
   const select = useStore((s) => s.select);
-  const moveItem = useStore((s) => s.moveItem);
+  const moveStack = useStore((s) => s.moveStack);
   const beginDrag = useStore((s) => s.beginDrag);
   const endDrag = useStore((s) => s.endDrag);
   const addItem = useStore((s) => s.addItem);
@@ -208,6 +210,9 @@ export function TopView({ summary }: { summary: LayoutSummary }) {
     e.stopPropagation();
     select(item.id);
     const r = rects[idx];
+    const carry = !e.altKey;
+    // Snap against everything that stays put.
+    const moving = new Set(carry ? carriedItemIds(items, settings, item.id) : [item.id]);
     dragRef.current = {
       id: item.id,
       pointerId: e.pointerId,
@@ -215,7 +220,8 @@ export function TopView({ summary }: { summary: LayoutSummary }) {
       startMm: toMm(e.clientX, e.clientY),
       itemStart: { x: item.x, y: item.y },
       size: { width: r.width, depth: r.depth },
-      others: rects.filter((_, i) => i !== idx),
+      others: rects.filter((_, i) => !moving.has(items[i].id)),
+      carry,
       moved: false,
     };
     svgRef.current?.setPointerCapture(e.pointerId);
@@ -244,7 +250,7 @@ export function TopView({ summary }: { summary: LayoutSummary }) {
     const proposed = { x: d.itemStart.x + p.x - d.startMm.x, y: d.itemStart.y + p.y - d.startMm.y };
     let x: number;
     let y: number;
-    if (e.altKey) {
+    if (e.shiftKey) {
       x = Math.round(proposed.x * 10) / 10;
       y = Math.round(proposed.y * 10) / 10;
       setGuides([]);
@@ -258,7 +264,8 @@ export function TopView({ summary }: { summary: LayoutSummary }) {
     // Never let an item leave the game box entirely: keep at least half of it inside.
     x = Math.min(Math.max(x, -d.size.width / 2), settings.box.width - d.size.width / 2);
     y = Math.min(Math.max(y, -d.size.depth / 2), settings.box.depth - d.size.depth / 2);
-    moveItem(d.id, x, y);
+    const cur = useStore.getState().project.items.find((i) => i.id === d.id);
+    if (cur) moveStack(d.id, Math.round((x - cur.x) * 1000) / 1000, Math.round((y - cur.y) * 1000) / 1000, { carry: d.carry });
   };
 
   const finishPointer = (e: ReactPointerEvent<SVGSVGElement>) => {
@@ -446,7 +453,7 @@ export function TopView({ summary }: { summary: LayoutSummary }) {
           Fit
         </button>
       </div>
-      <div className="view-hint">Wheel: zoom · Middle / Space+drag: pan · Alt: no snap</div>
+      <div className="view-hint">Wheel: zoom · Middle / Space+drag: pan · Alt+drag: leave the stack on it behind · Shift: no snap</div>
     </div>
   );
 }

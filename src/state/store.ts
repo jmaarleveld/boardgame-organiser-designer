@@ -8,7 +8,7 @@ import { createEmptyProject } from '../model/types';
 import { getBoxType } from '../boxes/registry';
 import { newItemParams } from '../boxes/types';
 import type { Rect } from '../model/layout';
-import { itemEngagement, rectInside, rectsOverlap, restingElevation, safeItemRect, usableArea } from '../model/layout';
+import { carriedItemIds, elevationOf, rectInside, rectsOverlap, safeItemRect, settle, usableArea } from '../model/layout';
 
 export const HISTORY_LIMIT = 100;
 
@@ -35,16 +35,28 @@ export interface AppState {
   addItem(typeId: string, at?: { x: number; y: number }): string;
   updateItem(id: string, patch: ItemPatch): void;
   setParam(id: string, key: string, value: ParamValue): void;
-  /** Move an item. Inside beginDrag/endDrag, moves are coalesced into one undo step. */
+  /**
+   * Move an item to (x, y), carrying the items stacked on it (moveStack with
+   * carry). Inside beginDrag/endDrag, moves are coalesced into one undo step.
+   */
   moveItem(id: string, x: number, y: number): void;
+  /**
+   * Move an item by (dx, dy). With `carry`, everything resting on it
+   * (transitively; a bridge only when all its supporters move) moves along;
+   * without, items left behind drop to whatever is under them. The moved
+   * items go to the end of the stack order (keeping their relative order), so
+   * they land on top of whatever they now overlap.
+   */
+  moveStack(id: string, dx: number, dy: number, opts: { carry: boolean }): void;
+  /** Move an item to position `toIndex` (clamped) of the stack order. */
+  reorderItem(id: string, toIndex: number): void;
   rotateItem(id: string): void;
   removeItem(id: string): void;
   duplicateItem(id: string): string | null;
-  /** Set an item's bottom elevation (mm, clamped to ≥ 0; 0 clears the field). */
-  setElevation(id: string, z: number): void;
-  /** Drop/raise an item so it rests on whatever it overlaps in XY (restingElevation). */
-  stackOnBelow(id: string): void;
-  /** Duplicate an item on top of itself (same x/y, z = top − engagement). Returns the new id. */
+  /**
+   * Duplicate an item on top of itself: the copy (same x/y) is inserted right
+   * after the source in the stack order, so it rests on it. Returns the new id.
+   */
   duplicateItemStacked(id: string): string | null;
   select(id: string | null): void;
   loadProject(project: Project): void;
@@ -117,12 +129,26 @@ export function stackedLabel(label: string): string {
   return `${label.trim() || 'Box'} (level 2)`;
 }
 
-function withElevation(item: PlacedItem, z: number): PlacedItem {
-  const nz = Number.isFinite(z) ? Math.max(0, round(z)) : 0;
-  if ((item.z ?? 0) === nz && (nz !== 0 || item.z === undefined)) return item;
-  const next: PlacedItem = { ...item, z: nz };
-  if (nz === 0) delete next.z;
-  return next;
+/** `p` with `items` settled by gravity (`settle`); `p` itself when nothing changes. */
+function withItems(p: Project, items: PlacedItem[]): Project {
+  const settled = settle(items, p.settings);
+  return settled === p.items ? p : { ...p, items: settled };
+}
+
+/** `p` with its items settled (snapshots from undo/redo are normally settled already). */
+function settled(p: Project): Project {
+  return withItems(p, p.items);
+}
+
+/**
+ * Migration for projects saved before z was derived (DESIGN.md §2): the stack
+ * order is the stored z, ascending (stable), then gravity settles the items.
+ */
+export function migrateStackOrder(project: Project): Project {
+  const order = project.items.map((item, idx) => ({ item, idx, z: elevationOf(item) }));
+  order.sort((a, b) => a.z - b.z || a.idx - b.idx);
+  const unchanged = order.every((o, i) => o.idx === i);
+  return withItems(project, unchanged ? project.items : order.map((o) => o.item));
 }
 
 function labelBase(name: string): string {
@@ -153,7 +179,7 @@ export const useStore = create<AppState>()((set, get) => {
       if (updated === p.items[idx]) return p;
       const items = p.items.slice();
       items[idx] = updated;
-      return { ...p, items };
+      return withItems(p, items);
     });
 
   return {
@@ -178,7 +204,7 @@ export const useStore = create<AppState>()((set, get) => {
           tolerance: { ...s.tolerance, ...stripUndefined(partial.tolerance) },
           defaults: { ...s.defaults, ...stripUndefined(partial.defaults) },
         };
-        return { ...p, settings };
+        return settled({ ...p, settings });
       }),
 
     setBoxSize: (size) => get().setSettings({ box: size }),
@@ -215,7 +241,7 @@ export const useStore = create<AppState>()((set, get) => {
       }
       item.x = round(pos.x);
       item.y = round(pos.y);
-      commit((p) => ({ ...p, items: [...p.items, item] }));
+      commit((p) => withItems(p, [...p.items, item]));
       set({ selectedId: item.id });
       return item.id;
     },
@@ -232,11 +258,36 @@ export const useStore = create<AppState>()((set, get) => {
     setParam: (id, key, value) =>
       mapItem(id, (i) => (i.params[key] === value ? i : { ...i, params: { ...i.params, [key]: value } })),
 
-    moveItem: (id, x, y) =>
-      mapItem(id, (i) => {
-        const nx = round(x);
-        const ny = round(y);
-        return i.x === nx && i.y === ny ? i : { ...i, x: nx, y: ny };
+    moveItem: (id, x, y) => {
+      const item = get().project.items.find((i) => i.id === id);
+      if (!item) return;
+      get().moveStack(id, round(x) - item.x, round(y) - item.y, { carry: true });
+    },
+
+    moveStack: (id, dx, dy, { carry }) =>
+      commit((p) => {
+        if (!p.items.some((i) => i.id === id)) return p;
+        if (!(Number.isFinite(dx) && Number.isFinite(dy)) || (dx === 0 && dy === 0)) return p;
+        const ids = new Set(carry ? carriedItemIds(p.items, p.settings, id) : [id]);
+        const rest: PlacedItem[] = [];
+        const moved: PlacedItem[] = [];
+        for (const i of p.items) {
+          if (ids.has(i.id)) moved.push({ ...i, x: round(i.x + dx), y: round(i.y + dy) });
+          else rest.push(i);
+        }
+        return withItems(p, [...rest, ...moved]);
+      }),
+
+    reorderItem: (id, toIndex) =>
+      commit((p) => {
+        const from = p.items.findIndex((i) => i.id === id);
+        if (from < 0) return p;
+        const to = Math.min(Math.max(0, Math.trunc(Number.isFinite(toIndex) ? toIndex : from)), p.items.length - 1);
+        if (to === from) return p;
+        const items = p.items.slice();
+        const [item] = items.splice(from, 1);
+        items.splice(to, 0, item);
+        return withItems(p, items);
       }),
 
     rotateItem: (id) => {
@@ -263,7 +314,7 @@ export const useStore = create<AppState>()((set, get) => {
     },
 
     removeItem: (id) => {
-      commit((p) => (p.items.some((i) => i.id === id) ? { ...p, items: p.items.filter((i) => i.id !== id) } : p));
+      commit((p) => (p.items.some((i) => i.id === id) ? withItems(p, p.items.filter((i) => i.id !== id)) : p));
       if (get().selectedId === id) set({ selectedId: null });
     },
 
@@ -298,35 +349,28 @@ export const useStore = create<AppState>()((set, get) => {
       };
       // The free spot search works on the floor level: the copy starts there.
       delete copy.z;
-      commit((p) => ({ ...p, items: [...p.items, copy] }));
+      commit((p) => withItems(p, [...p.items, copy]));
       set({ selectedId: copy.id });
       return copy.id;
     },
 
-    setElevation: (id, z) => mapItem(id, (i) => withElevation(i, z)),
-
-    stackOnBelow: (id) => {
-      const { settings, items } = get().project;
-      if (!items.some((i) => i.id === id)) return;
-      const z = restingElevation(id, items, settings);
-      mapItem(id, (i) => withElevation(i, z));
-    },
-
     duplicateItemStacked: (id) => {
-      const { settings, items } = get().project;
+      const { items } = get().project;
       const src = items.find((i) => i.id === id);
       if (!src) return null;
-      const r = safeItemRect(src, settings, items);
       const copy: PlacedItem = {
         ...structuredClone(src),
         id: newId(),
         label: stackedLabel(src.label),
       };
-      // Engagement of the copy on its source (e.g. a recess only sinks into a lip).
-      const z = Math.max(0, round(r.top - itemEngagement(copy, src, settings, items)));
-      if (z > 0) copy.z = z;
-      else delete copy.z;
-      commit((p) => ({ ...p, items: [...p.items, copy] }));
+      delete copy.z;
+      commit((p) => {
+        const idx = p.items.findIndex((i) => i.id === id);
+        if (idx < 0) return p;
+        const next = p.items.slice();
+        next.splice(idx + 1, 0, copy);
+        return withItems(p, next);
+      });
       set({ selectedId: copy.id });
       return copy.id;
     },
@@ -334,7 +378,7 @@ export const useStore = create<AppState>()((set, get) => {
     select: (id) => set({ selectedId: id }),
 
     loadProject: (project) => {
-      commit(() => structuredClone(project));
+      commit(() => migrateStackOrder(structuredClone(project)));
       set({ selectedId: null });
     },
 
@@ -365,7 +409,7 @@ export const useStore = create<AppState>()((set, get) => {
       if (get().dragBase) get().endDrag();
       const { past, future, project, selectedId } = get();
       if (!past.length) return;
-      const prev = past[past.length - 1];
+      const prev = settled(past[past.length - 1]);
       set({
         project: prev,
         past: past.slice(0, -1),
@@ -377,7 +421,7 @@ export const useStore = create<AppState>()((set, get) => {
     redo: () => {
       const { past, future, project, selectedId } = get();
       if (!future.length) return;
-      const next = future[0];
+      const next = settled(future[0]);
       set({
         project: next,
         past: [...past, project].slice(-HISTORY_LIMIT),

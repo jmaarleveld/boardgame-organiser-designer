@@ -71,7 +71,8 @@ Mouse:
 |---|---|
 | Select an item | Click it (click the background to deselect) |
 | Move an item | Drag it |
-| Disable snapping while dragging | Hold `Alt` |
+| Disable snapping while dragging | Hold `Shift` |
+| Drag an item out from under its stack | Hold `Alt` when you start dragging |
 | Zoom | Mouse wheel, centred on the pointer |
 | Zoom in / out / fit | `+` / `−` / `Fit` buttons at the corner of the top view |
 | Pan | Middle-button drag, or hold `Space` and drag |
@@ -176,13 +177,18 @@ settings are ignored.
 
 Items can sit on top of other items, not only on the game box floor.
 
-* **Elevation.** Every item has a `z` (the height of its bottom above the game
-  box floor, default 0). The inspector shows it in the *Elevation* group next to
-  the computed top (`z` + outer height). The layout checks work in 3D: two items
-  that overlap in the top view only collide when their heights overlap too, and
-  "too tall" uses the top of the item.
-* **Rest on items below** sets `z` so the item rests on the highest item it
-  overlaps in the top view (or on the floor when it overlaps nothing).
+* **Gravity.** Every item has a `z` (the height of its bottom above the game
+  box floor), but you never type it: each item rests on the highest item below
+  it that it overlaps in the top view, or on the floor. The order of the items
+  is the stack order — an item dragged onto another lands on top of it. The
+  inspector shows "Rests at z = …" next to the computed top (`z` + outer
+  height). The layout checks work in 3D: two items that overlap in the top view
+  only collide when their heights overlap too, and "too tall" uses the top of
+  the item.
+* **Moving stacks.** Dragging an item moves everything stacked on it along (an
+  item bridging two trays only comes along when both move). Alt+drag pulls the
+  item out from under its stack; what was on it drops down. Shift+drag moves
+  without snapping.
 * **Duplicate on top** (`Ctrl+Shift+D`) puts a copy at the same position on top
   of the selected item and names it "… (level 2)", "… (level 3)", and so on.
 * **Support check.** An item with `z > 0` must be fully carried: its footprint
@@ -229,8 +235,7 @@ anything else (a plain tray, platform or spacer: it simply rests on top),
 `plugHeight` for a plug and `stopHeight` for a platform with corner stops. An
 item resting on several items sits on the highest effective surface (top −
 engagement on that item); it counts as supported only by the items that meet
-it there. *Rest on items below* and
-*Duplicate on top* take this into account. A recess needs at least 0.4 mm of
+it there. Gravity takes this into account. A recess needs at least 0.4 mm of
 wall left next to it (`wall/2 − stackClearance ≥ 0.4`). Finger notches cut
 through the lip. A plug needs an empty cavity below: it collides with the
 dividers of a divided tray.
@@ -245,7 +250,7 @@ recess get no ridge. Several smaller organizers of different types can so be
 locked on one platform. Everything on the platform still rests on the plate:
 the platform's top is the top of its ridges, and its engagement for anything on
 it is the ridge height (`lipHeight` when all ridged items use the same lip), so
-*Rest on items below* puts the items on the plate and the support check accepts
+gravity puts the items on the plate and the support check accepts
 them. With the option off, ridges are left out and items rest on the flat plate.
 An item counts as resting on the platform when it overlaps it in the top view
 and its `z` is the plate top (within 0.01 mm).
@@ -290,8 +295,8 @@ it rests on (its *supporters*: those whose top − engagement is its `z`).
   deep) or a platform's corner stops must drop into an open cavity: an
   **error** when they hit walls or dividers that reach higher than the pad's
   bottom (a plug on a divided tray), or a solid top (a plug on a spacer or a
-  platform). The engagement stays `plugHeight` on anything, so *Rest on items
-  below* sinks the plug and the check reports the collision.
+  platform). The engagement stays `plugHeight` on anything, so gravity sinks
+  the plug and the check reports the collision.
 * **Keep‑out space.** An upright card tray keeps the space above its cavity
   free up to where the cards stick out (`exposedHeight` − lip height above its
   top). Another item in that space is an **error**, and the "too tall" check

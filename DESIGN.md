@@ -27,6 +27,11 @@ BGG's XML API does not send CORS headers.
 * **Game box frame** (top view): origin is the inner top‑left corner of the game
   box. `x` grows to the right (box *width*), `y` grows downward (box *depth*),
   exactly like SVG. `z` is up (box *height*).
+* **Stack order and gravity**: an item's elevation is not entered; it is
+  derived. The order of `Project.items` is the stack order: each item rests on
+  the highest effective surface (`top − engagement`, §4) of the *earlier*
+  items it overlaps in XY, or on the floor (`settle` in `src/model/layout.ts`).
+  Later in the array = higher up a stack.
 * **Usable area**: the game box inner rectangle shrunk by the tolerance, centred:
   `usable.x0 = tol.x / 2`, `usable.width = box.width - tol.x` (same for y / depth).
   Tolerance is therefore the *total* slack that remains after tiling, per axis.
@@ -52,7 +57,7 @@ Project
  └ items: PlacedItem[]
      ├ id, type (box type id), label
      ├ x, y, rotation (0 | 90)
-     ├ z?                                   bottom elevation in mm (undefined → 0)
+     ├ z?                                   bottom elevation in mm (undefined → 0); derived cache, see below
      ├ wall?, floor?                        per‑item overrides (undefined → project default)
      └ params: Record<string, number|boolean|string>   type‑specific parameters
 ```
@@ -62,15 +67,25 @@ defaults and parameter defaults into a `ResolvedItem` that box definitions
 consume; given the project's `items` it also attaches the item's build context
 (§4.2).
 
-**Elevation (`z`).** Items can be stacked. `itemRect` reports `z` and
+**Elevation (`z`).** Items can be stacked. `z` is derived by gravity from the
+stack order (§2): `settle(items, settings)` walks the items in order and sets
+each one's `z` to max over the earlier XY‑overlapping items `o` of
+`o.top − engagement(item on o)` (0 if none), rounded to 0.001 mm (0 ⇒ the field
+is deleted). It returns unchanged items (and, when nothing changes, the array)
+by identity, so memo keys and mesh caches stay valid; ridged platforms (whose
+height depends on what rests on them, §4.2) are handled by repeating the pass
+until nothing changes. The stored `z` is a cache: the store re‑settles after
+every change of the items or the settings, and `loadProject` migrates files
+(including those saved before z was derived) by sorting the items on their
+stored `z` (stable) and settling (`migrateStackOrder`). `itemRect` reports `z` and
 `top = z + height`. Two items collide when they overlap in XY *and* in Z, where
 the upper item's effective bottom is `z + engagement` (see §4). `itemsTooTall`
 uses `top`. `unsupportedItems` flags items with `z > 0` whose XY rect is not
 fully covered (exactly, by coordinate compression) by the union of items whose
 `top = z + engagement` (±0.01 mm); `layoutSummary` reports them as
 `kind: 'floating'` warnings (unless the stack fit check already reports
-the item, §4.3). `restingElevation` = max top of XY‑overlapping
-items − engagement (0 if none). An item's own `z` does not affect its geometry
+the item, §4.3); with gravity they only occur in edge cases. `restingElevation` = max top of XY‑overlapping
+items − engagement (0 if none), regardless of order. An item's own `z` does not affect its geometry
 or the exporter's dedupe key (but the `z` of items resting on a platform with
 locating ridges affects the platform's, §4.2). `itemRect` / `safeItemRect` /
 `placedFootprint` take the project's `items` as an optional last argument so
@@ -98,11 +113,22 @@ Conventions for definitions:
 **Stacking.** `stackEngagement?(item, below?)` returns how many mm of the
 item's base sink into `below`, the item it stands on (0/undefined for flat
 bases); use `engagementOf(def, item, below)`. Engagement is per pair: the
-layout (`restingElevation`, `unsupportedItems`, the overlap/intersection
-checks) and *Duplicate on top* always pass `below`; without it the nominal
+layout (`settle`, `restingElevation`, `unsupportedItems`, the overlap/intersection
+checks) always passes `below`; without it the nominal
 engagement against a matching partner is returned. An item on several items
 rests at max over them of `top − engagement(item on it)` and is supported by
-those that meet that z (within `SUPPORT_TOL`). The cavity types share a *Stacking* parameter group (`common.ts`:
+those that meet that z (within `SUPPORT_TOL`; `supportersById`).
+
+**Moving stacks.** `moveStack(id, dx, dy, { carry })` in the store: with
+`carry`, the item moves together with everything resting on it, directly or
+transitively (`carriedItemIds`); an item resting on several items (a bridge)
+is carried only when *all* its supporters move, otherwise it stays and
+re‑settles. Without `carry` (Alt+drag) only the item moves and what was on it
+drops to whatever is under it. The moved items go to the end of the stack
+order (keeping their relative order), so they land on top of whatever they
+now overlap. `moveItem(id, x, y)` is `moveStack` with `carry`.
+`duplicateItemStacked` inserts the copy (same x/y) right after the source, so
+it rests on it; `reorderItem(id, toIndex)` changes the stack order. The cavity types share a *Stacking* parameter group (`common.ts`:
 `stackTop` `none|lip`, `stackBottom` `none|recess|plug`, `lipHeight` 2,
 `plugHeight` 2, `stackClearance` 0.15). The lip is the outer `wall/2` of the
 wall raised by `lipHeight`; the recess is a ring `wall/2 + clearance` wide and
@@ -163,7 +189,7 @@ the items resting on it, so the contract has an opt‑in build context:
   and a note.
 * Every consumer that builds, draws, sizes or keys geometry passes the
   project's items: the layout (`stackRects`, `itemsTooTall`, validation), the
-  store (*Duplicate on top*), the top view, the inspector, the exporter
+  store (`settle`), the top view, the inspector, the exporter
   (`buildSolid`, OpenSCAD, manifest) and the assembly view (`localSize`,
   `classifyItems`). `geometryKey` includes the context (ids dropped, entries
   sorted), so the export dedupe, the item preview key (`PreviewPane`) and the
@@ -261,11 +287,14 @@ Three‑pane layout:
 2. **Centre — top view** (SVG): game box outline, usable area (tolerance
    band hatched), placed items with their top‑view features, labels and
    dimensions. Drag to move, `R` to rotate, `Delete` to remove, `Ctrl+D`
-   duplicate, `Ctrl+Shift+D` duplicate on top (stacked), `Ctrl+Z/Y` undo/redo. Snapping to the grid, to the usable‑area
+   duplicate, `Ctrl+Shift+D` duplicate on top (stacked), `Ctrl+Z/Y` undo/redo.
+   Dragging moves an item with the stack on it; Alt+drag leaves the stack
+   behind; Shift disables snapping. Snapping to the grid, to the usable‑area
    edges and to neighbouring item edges. Overlapping items, items outside the
    usable area and items taller than the box are highlighted and listed in a
    validation panel.
-3. **Right — inspector**: label, position, rotation, wall/floor override
+3. **Right — inspector**: label, position, rotation, read‑only elevation
+   ("Rests at z = …"), wall/floor override
    (checkbox "override project default" + value), generated parameter form,
    computed outer footprint, 3D preview of the selected item, export buttons.
 
