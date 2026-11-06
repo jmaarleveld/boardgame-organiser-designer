@@ -4,7 +4,7 @@ import { fakeBox } from './fakeBox.testutil';
 import type { ItemParams, PlacedItem, ProjectSettings } from './types';
 import { DEFAULT_SETTINGS } from './types';
 import { settle } from './layout';
-import { EXPLODE_GAP, explodeOffsets, fadedItemIds, stackLevels } from './stackView';
+import { EXPLODE_GAP, explodeGap, explodeOffsets, fadedItemIds, hasStacks, stackLevels } from './stackView';
 
 const settings: ProjectSettings = {
   ...structuredClone(DEFAULT_SETTINGS),
@@ -73,5 +73,20 @@ describe('stackLevels / explodeOffsets', () => {
     const lv = stackLevels(items, settings);
     expect(lv.get('br')).toBe(2);
     expect(explodeOffsets(items, settings, 10).get('br')).toBe(20);
+  });
+});
+
+describe('explodeGap / hasStacks', () => {
+  it('scales the gap with the tallest item, never below EXPLODE_GAP', () => {
+    expect(explodeGap(S([at('a', 0, 0)]), settings)).toBe(EXPLODE_GAP);
+    const tall = S([at('a', 0, 0, { w: 40, d: 20, h: 100 })]);
+    expect(explodeGap(tall, settings)).toBeGreaterThanOrEqual(30);
+    expect(explodeGap(tall, settings)).toBeLessThanOrEqual(33);
+  });
+
+  it('is false when every item stands on the floor', () => {
+    expect(hasStacks([], settings)).toBe(false);
+    expect(hasStacks(S([at('a', 0, 0), at('b', 100, 0)]), settings)).toBe(false);
+    expect(hasStacks(S([at('a', 0, 0), at('b', 0, 0)]), settings)).toBe(true);
   });
 });

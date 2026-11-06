@@ -52,6 +52,22 @@ export function stackLevels(items: PlacedItem[], settings: ProjectSettings): Map
 /** Default vertical gap (mm) added per stack level in the exploded view. */
 export const EXPLODE_GAP = 15;
 
+/** Exploded gap scaled to the layout: 30 % of the tallest item, at least EXPLODE_GAP. */
+export function explodeGap(items: PlacedItem[], settings: ProjectSettings): number {
+  let tallest = 0;
+  for (const item of items) {
+    const r = safeItemRect(item, settings, items);
+    tallest = Math.max(tallest, r.top - r.z);
+  }
+  return Math.max(EXPLODE_GAP, Math.round(tallest * 0.3));
+}
+
+/** True when at least one item rests on another (the exploded view changes something). */
+export function hasStacks(items: PlacedItem[], settings: ProjectSettings): boolean {
+  const sup = supportersById(items, settings);
+  return items.some((i) => (sup.get(i.id) ?? []).length > 0);
+}
+
 /** Display‑only z offset per item: level × gap (all 0 when `gap` is 0). */
 export function explodeOffsets(items: PlacedItem[], settings: ProjectSettings, gap = EXPLODE_GAP): Map<string, number> {
   const out = new Map<string, number>();

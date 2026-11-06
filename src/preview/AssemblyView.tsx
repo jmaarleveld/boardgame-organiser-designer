@@ -5,7 +5,7 @@ import type { Rect, SnapGuide } from '../model/layout';
 import { layoutSummary, safeItemRect } from '../model/layout';
 import type { DragPlane, DragSession } from '../model/drag';
 import { chooseDragPlane, dragDelta, dragPlanePoint, dragStep, gapLabels, startDragSession } from '../model/drag';
-import { explodeOffsets, fadedItemIds } from '../model/stackView';
+import { explodeGap, explodeOffsets, fadedItemIds, hasStacks } from '../model/stackView';
 import { findBoxType } from '../boxes/registry';
 import { BOX_TYPE_MIME } from '../ui/dnd';
 import { MiniMap } from '../ui/MiniMap';
@@ -164,7 +164,11 @@ export default function AssemblyView({ className, editable = false }: AssemblyVi
     () => (editable && fadeAbove ? fadedItemIds(items, settings, selectedId) : new Set<string>()),
     [editable, fadeAbove, items, settings, selectedId],
   );
-  const offsets = useMemo(() => (exploded ? explodeOffsets(items, settings) : null), [exploded, items, settings]);
+  const stacked = useMemo(() => hasStacks(items, settings), [items, settings]);
+  const offsets = useMemo(
+    () => (exploded && stacked ? explodeOffsets(items, settings, explodeGap(items, settings)) : null),
+    [exploded, stacked, items, settings],
+  );
   /** Displayed (exploded) bottom z of an item; model z when not exploded. */
   const displayZ = (id: string, z: number) => z + (offsets?.get(id) ?? 0);
   const fitHeight = useMemo(() => {
@@ -385,10 +389,11 @@ export default function AssemblyView({ className, editable = false }: AssemblyVi
             </button>
             <button
               type="button"
-              className={exploded ? 'active' : undefined}
-              aria-pressed={exploded}
+              className={exploded && stacked ? 'active' : undefined}
+              aria-pressed={exploded && stacked}
+              disabled={!stacked}
               onClick={() => setExploded((v) => !v)}
-              title="Lift every stack level apart (display only; dragging still works)"
+              title={stacked ? 'Lift every stack level apart (display only; dragging still works)' : 'No stacked items: nothing to explode'}
             >
               Exploded
             </button>
