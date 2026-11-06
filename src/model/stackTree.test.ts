@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clearRegistry, registerBoxType } from '../boxes/registry';
-import { tray } from '../boxes/definitions/tray';
 import { platform } from '../boxes/definitions/platform';
 import { spacer } from '../boxes/definitions/spacer';
 import { fakeBox } from './fakeBox.testutil';
@@ -19,7 +18,7 @@ function at(id: string, x: number, y: number, params: ItemParams = {}): PlacedIt
 
 beforeEach(() => {
   clearRegistry();
-  for (const d of [fakeBox, tray, platform, spacer]) registerBoxType(d);
+  for (const d of [fakeBox, platform, spacer]) registerBoxType(d);
 });
 
 describe('buildStackTree', () => {

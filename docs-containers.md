@@ -1,10 +1,11 @@
 # Containers v2: four basic elements on one tiling framework
 
-Implemented 2026-11-06 (commits eaafa38 and 4fedc48). The v1 set (`tray`,
-`divided-tray`, `card-tray`) stays registered so saved projects keep working;
-the four types below are the new standard set and may replace them later. This
-file describes what was built; where it differs from the original brief, the
-code is the truth.
+Implemented 2026-11-06 (commits eaafa38 and 4fedc48). The four types below are
+the standard container set. The v1 set (`tray`, `divided-tray`, `card-tray`)
+was deleted the same day; saved projects that use it are migrated on load
+(`migrateLegacyItem` in `src/services/persistence.ts`, see DESIGN.md §4.1).
+This file describes what was built; where it differs from the original brief,
+the code is the truth.
 
 ## Goal
 
@@ -78,8 +79,7 @@ Framework functions:
   boundary spanning the inner depth, one per row boundary spanning the inner
   width; none when `straightDividers` is false or the gap is not positive.
 * `tiledBuild(kernel, spec)` -> `stackedBlock` (outer box + lip ring + plug
-  pad - recess ring, no cavity; `stackedOpenBox` is `stackedBlock` minus one
-  cavity, so the v1 types are unchanged) minus the strip above each lowered
+  pad - recess ring, no cavity) minus the strip above each lowered
   divider minus every cell's cutters, in one boolean.
 * `tiledDraw(spec)` -> cavities, then divider rects (role `divider`), then the
   other cell features (notches).
@@ -102,7 +102,7 @@ it cuts through on each side, so a cutter spanning
 ### Shared card parameters (`cardParams` in `common.ts`)
 
 `cardWidth` 63.5, `cardHeight` 88, `clearance` 1, `stackHeight` 30 (group
-"Cards"), same specs as the v1 `card-tray`. Plus `cardDims(item)` and
+"Cards"), same specs as the deleted v1 `card-tray`. Plus `cardDims(item)` and
 `validateCards`.
 
 ## The four types
@@ -188,15 +188,26 @@ finger notches.
 
 * Every new type has `newItemParams: { ...stackingNewItemParams }` and the
   stacking group, `stackEngagement`, `bearingAreas`, `baseFeatures`.
-* Validation messages follow the v1 style (`requirePositive`, full sentences
+* Validation messages follow the common style (`requirePositive`, full sentences
   with the offending values).
 * Tests per type in `src/boxes/boxes.test.ts` style (valid manifold, bounds =
   footprint, draw inside footprint, default params validate clean) plus
   type‑specific checks (cell count ↔ volume, gap goes into the floor, wedge
   removes material, tilted slot bounds, scoop reduces cavity volume, tiled
   footprint arithmetic, divider rects). `tiling.test.ts` for the framework.
-* Register in `src/boxes/index.ts` after the v1 types; palette order:
-  item‑tray, card‑tray‑flat, card‑tray‑upright, card‑tray‑tilted, then v1.
+* Register in `src/boxes/index.ts`; palette order: item‑tray,
+  card‑tray‑flat, card‑tray‑upright, card‑tray‑tilted, spacer, platform.
+
+## Decided
+
+* **v1 retired** (2026-11-06). `tray`, `divided-tray` and `card-tray` are
+  deleted, not just hidden from the palette. On load `tray` becomes `item-tray`
+  1 × 1 (same inner size), `divided-tray` an `item-tray` c × r with cell =
+  ((W − (c−1)·t)/c) × ((D − (r−1)·t)/r), `card-tray` a `card-tray-flat` or
+  `card-tray-upright` by orientation. Footprints and stacking params are
+  unchanged; finger notches are dropped. `examples/stacking-demo.json` and the
+  sample project were migrated with the same function and report exactly as
+  before.
 
 ## Open points for the user
 
@@ -204,8 +215,6 @@ finger notches.
   Is an X-tiled stepped dispenser (lanes side by side across the width) wanted?
 * **Wedges in the long walls vs. in the dividers.** Upright wedges are cut only
   in the two outer long walls; dividers (parallel to Y) have none.
-* **Retire the v1 `tray`, `divided-tray`, `card-tray` from the palette?** They
-  stay registered either way for saved projects.
 * **Scoop next to a lowered divider** can stand higher than the divider; there
   is no warning yet.
 * **`itemsOutsideUsable` ignores the tilted tray's overhanging cards** (keep-out

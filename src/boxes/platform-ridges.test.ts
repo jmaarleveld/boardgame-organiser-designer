@@ -9,6 +9,7 @@ import { createKernel } from '../geometry/kernel';
 import type { GeometryKernel } from '../geometry/types';
 import type { ItemAbove, ItemParams, PlacedItem, Project, ProjectSettings, ResolvedItem } from '../model/types';
 import { DEFAULT_SETTINGS } from '../model/types';
+import { trayParams } from '../model/fakeBox.testutil';
 import { placedFootprint, resolveItem } from '../model/resolve';
 import { findOverlaps, itemRect, layoutSummary, restingElevation, unsupportedItems } from '../model/layout';
 import { registerAllBoxTypes, platform } from './index';
@@ -129,7 +130,7 @@ const settings: ProjectSettings = {
 };
 
 function placed(id: string, type: string, x: number, y: number, params: ItemParams = {}, z?: number, rotation: 0 | 90 = 0): PlacedItem {
-  return { id, type, label: id.toUpperCase(), x, y, rotation, params, ...(z !== undefined ? { z } : {}) };
+  return { id, type, label: id.toUpperCase(), x, y, rotation, params: trayParams(type, params), ...(z !== undefined ? { z } : {}) };
 }
 
 const recess = { stackBottom: 'recess' };
@@ -138,10 +139,10 @@ describe('build context', () => {
   it('lists items resting on the plate top in the platform frame, rotation included', () => {
     // Platform 100 × 60 (local), rotated: occupies 60 × 100 in the box.
     const p = placed('p', 'platform', 0, 0, { width: 100, depth: 60 }, undefined, 90);
-    const t = placed('t', 'tray', 5, 20, { ...recess, innerWidth: 26.8, innerDepth: 36.8 }, 4); // 30 × 40 outer
-    const tr = placed('r', 'tray', 40, 20, { ...recess, innerWidth: 26.8, innerDepth: 16.8 }, 4, 90); // 20 × 30 placed
-    const far = placed('f', 'tray', 100, 0, recess, 4);
-    const high = placed('h', 'tray', 5, 70, recess, 10);
+    const t = placed('t', 'item-tray', 5, 20, { ...recess, innerWidth: 26.8, innerDepth: 36.8 }, 4); // 30 × 40 outer
+    const tr = placed('r', 'item-tray', 40, 20, { ...recess, innerWidth: 26.8, innerDepth: 16.8 }, 4, 90); // 20 × 30 placed
+    const far = placed('f', 'item-tray', 100, 0, recess, 4);
+    const high = placed('h', 'item-tray', 5, 70, recess, 10);
     const r = resolveItem(p, settings, [p, t, tr, far, high]);
     expect(r.context!.itemsAbove).toEqual([
       { id: 'r', x: 20, y: 0, width: 30, depth: 20, wall: 1.6, stackBottom: 'recess', lipHeight: 2 },
@@ -160,7 +161,7 @@ describe('build context', () => {
 
   it('is absent with locateItems off', () => {
     const p = placed('p', 'platform', 0, 0, { locateItems: false });
-    expect(resolveItem(p, settings, [p, placed('t', 'tray', 5, 5, recess, 4)]).context).toBeUndefined();
+    expect(resolveItem(p, settings, [p, placed('t', 'item-tray', 5, 5, recess, 4)]).context).toBeUndefined();
   });
 });
 
@@ -168,7 +169,7 @@ describe('resting on a ridged platform', () => {
   const p = placed('p', 'platform', 1, 1);
 
   it('a recessed tray rests on the plate (platform top − lipHeight) and is supported', () => {
-    const t = placed('t', 'tray', 10, 10, recess, 50);
+    const t = placed('t', 'item-tray', 10, 10, recess, 50);
     // Not resting yet: no ridges, rests on the plate top.
     expect(restingElevation('t', [p, t], settings)).toBe(4);
     const items = [p, { ...t, z: 4 }];
@@ -184,7 +185,7 @@ describe('resting on a ridged platform', () => {
 
   it('with locateItems off it rests at the plate top, which is the platform top', () => {
     const off = { ...p, params: { locateItems: false } };
-    const items = [off, placed('t', 'tray', 10, 10, recess, 4)];
+    const items = [off, placed('t', 'item-tray', 10, 10, recess, 4)];
     expect(itemRect(off, settings, items).top).toBe(4);
     expect(restingElevation('t', items, settings)).toBe(4);
     expect(unsupportedItems(items, settings)).toEqual([]);
@@ -192,9 +193,9 @@ describe('resting on a ridged platform', () => {
 
   it('items of different lip heights and flat items all sit on the plate', () => {
     const wide = placed('p', 'platform', 1, 1, { width: 200 });
-    const a = placed('a', 'tray', 1, 1, recess, 4);
-    const b = placed('b', 'tray', 64.2, 1, { ...recess, lipHeight: 3 }, 4);
-    const c = placed('c', 'tray', 127.4, 1, {}, 4);
+    const a = placed('a', 'item-tray', 1, 1, recess, 4);
+    const b = placed('b', 'item-tray', 64.2, 1, { ...recess, lipHeight: 3 }, 4);
+    const c = placed('c', 'item-tray', 127.4, 1, {}, 4);
     const items = [wide, a, b, c];
     expect(itemRect(wide, settings, items).top).toBe(7);
     for (const id of ['a', 'b', 'c']) expect(restingElevation(id, items, settings)).toBe(4);
@@ -210,8 +211,8 @@ function project(items: PlacedItem[]): Project {
 
 describe('geometry keys follow the items on the platform', () => {
   const p = placed('p', 'platform', 1, 1);
-  const t = placed('t', 'tray', 10, 10, recess, 4);
-  const other = placed('o', 'tray', 150, 10, recess);
+  const t = placed('t', 'item-tray', 10, 10, recess, 4);
+  const other = placed('o', 'item-tray', 150, 10, recess);
 
   it('moving or changing an item on the platform changes its key; unrelated moves do not', () => {
     const k0 = geometryKey(project([p, t, other]), p);
@@ -264,7 +265,7 @@ describe('persistence', () => {
     const proj = project([
       placed('p', 'platform', 1, 1, { locateItems: false }),
       placed('q', 'platform', 1, 110),
-      placed('t', 'tray', 10, 119, recess, 4),
+      placed('t', 'item-tray', 10, 119, recess, 4),
     ]);
     const back = persistence.fromJson(persistence.toJson(proj));
     expect(back).toEqual(proj);

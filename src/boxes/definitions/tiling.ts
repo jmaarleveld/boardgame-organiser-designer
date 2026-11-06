@@ -377,7 +377,7 @@ export function tilingParams(axes: TilingAxes): ParamSpec[] {
   return out;
 }
 
-/** Optional `dividerHeight` param for the "Repeat" group (0 = full height, as the v1 divided tray). */
+/** Optional `dividerHeight` param for the "Repeat" group (0 = full height). */
 export const dividerHeightParam: ParamSpec = {
   key: 'dividerHeight',
   label: 'Divider height',

@@ -22,6 +22,96 @@ function num(v: unknown, path: string, opts: { positive?: boolean; nonNegative?:
   return v;
 }
 
+type Params = PlacedItem['params'];
+
+/** Parameter defaults of the deleted v1 types (an omitted param resolved to these). */
+const V1_TRAY_DEFAULTS = { innerWidth: 60, innerDepth: 40, innerHeight: 30 };
+const V1_DIVIDED_DEFAULTS = { innerWidth: 90, innerDepth: 60, innerHeight: 25, columns: 3, rows: 2, dividerThickness: 1.2, dividerHeight: 0 };
+/** v1 params with no v2 equivalent (finger notches, card tray orientation): dropped. */
+const V1_DROPPED = ['fingerNotch', 'notchSides', 'notchWidth', 'notchDepth', 'orientation'];
+
+function numParam(params: Params, key: string, fallback: number): number {
+  const v = params[key];
+  return typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+}
+
+function without(params: Params, keys: readonly string[]): Params {
+  const out: Params = {};
+  for (const [k, v] of Object.entries(params)) if (!keys.includes(k)) out[k] = v;
+  return out;
+}
+
+/** Strip floating-point noise from a derived size (sub-nanometre). */
+function clean(v: number): number {
+  return Math.round(v * 1e9) / 1e9;
+}
+
+/**
+ * Load-time migration of the v1 box types, deleted 2026-11-06, to the
+ * containers v2 set (docs-containers.md). The outer footprint, the stacking
+ * params and the wall / floor overrides stay the same; finger notches have no
+ * equivalent and are dropped.
+ *
+ * - `tray` → `item-tray` 1 × 1, same inner size, flat floor.
+ * - `divided-tray` (inner W × D, c columns, r rows, dividers t) → `item-tray`
+ *   c × r with per-cell innerWidth (W − (c−1)·t)/c and innerDepth (D − (r−1)·t)/r.
+ * - `card-tray` → `card-tray-flat` or `card-tray-upright` by its orientation
+ *   (card params, clearance, stack height and, upright, exposed height carry
+ *   over; gaps and wedges get their defaults).
+ *
+ * Every other item is returned unchanged.
+ */
+export function migrateLegacyItem(item: PlacedItem): PlacedItem {
+  const params = item.params;
+  switch (item.type) {
+    case 'tray':
+      return {
+        ...item,
+        type: 'item-tray',
+        params: {
+          ...without(params, V1_DROPPED),
+          innerWidth: numParam(params, 'innerWidth', V1_TRAY_DEFAULTS.innerWidth),
+          innerDepth: numParam(params, 'innerDepth', V1_TRAY_DEFAULTS.innerDepth),
+          innerHeight: numParam(params, 'innerHeight', V1_TRAY_DEFAULTS.innerHeight),
+          floorShape: 'flat',
+        },
+      };
+    case 'divided-tray': {
+      const d = V1_DIVIDED_DEFAULTS;
+      const w = numParam(params, 'innerWidth', d.innerWidth);
+      const dp = numParam(params, 'innerDepth', d.innerDepth);
+      const cols = Math.max(1, Math.round(numParam(params, 'columns', d.columns)));
+      const rows = Math.max(1, Math.round(numParam(params, 'rows', d.rows)));
+      const t = numParam(params, 'dividerThickness', d.dividerThickness);
+      return {
+        ...item,
+        type: 'item-tray',
+        params: {
+          ...without(params, V1_DROPPED),
+          innerWidth: clean((w - (cols - 1) * t) / cols),
+          innerDepth: clean((dp - (rows - 1) * t) / rows),
+          innerHeight: numParam(params, 'innerHeight', d.innerHeight),
+          columns: cols,
+          rows,
+          dividerThickness: t,
+          dividerHeight: numParam(params, 'dividerHeight', d.dividerHeight),
+          floorShape: 'flat',
+        },
+      };
+    }
+    case 'card-tray': {
+      const upright = params.orientation === 'upright';
+      return {
+        ...item,
+        type: upright ? 'card-tray-upright' : 'card-tray-flat',
+        params: without(params, upright ? V1_DROPPED : [...V1_DROPPED, 'exposedHeight']),
+      };
+    }
+    default:
+      return item;
+  }
+}
+
 export function validateProject(data: unknown): Project {
   const root = obj(data, 'root');
   if (root.version !== 1) fail('version', `must be 1 (got ${JSON.stringify(root.version)})`);
@@ -73,7 +163,7 @@ export function validateProject(data: unknown): Project {
     if (it.z !== undefined) out.z = num(it.z, `${p}.z`, { nonNegative: true });
     if (it.wall !== undefined) out.wall = num(it.wall, `${p}.wall`, { positive: true });
     if (it.floor !== undefined) out.floor = num(it.floor, `${p}.floor`, { positive: true });
-    return out;
+    return migrateLegacyItem(out);
   });
   return { version: 1, settings, items };
 }

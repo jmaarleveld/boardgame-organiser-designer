@@ -52,7 +52,7 @@ Other scripts: `npm run lint` (oxlint), `npm run typecheck`, `npm run preview`
    one item its own wall or floor thickness. Clear the tick to go back to the
    project default.
 7. **Check validation.** Overlapping items, items outside the usable area, items
-   taller than the box, and invalid parameters (for example a notch wider than the
+   taller than the box, and invalid parameters (for example a finger gap wider than the
    wall it is cut from) are tinted in the 3D editor and the mini-map and listed in the
    validation panel. The status bar shows the remaining slack in X and Y.
 8. **Export.** "Export all STL" builds every item and downloads a zip containing one
@@ -64,7 +64,7 @@ Other scripts: `npm run lint` (oxlint), `npm run typecheck`, `npm run preview`
    Every `.stl` in the zip has a matching `.scad` file: OpenSCAD source describing the
    same geometry, for tweaking by hand. Parameters are baked in as literal numbers;
    the header comment lists them (with wall, floor and outer size) for reference only,
-   so editing those lines changes nothing. `$fn` at the top controls how smooth notch
+   so editing those lines changes nothing. `$fn` at the top controls how smooth scoops
    and other round cut-outs are.
 9. **Save and load.** Save writes the whole project as JSON; Open loads a JSON file
    (it is validated before it is applied). The current project is also autosaved to
@@ -106,65 +106,25 @@ Keyboard (when focus is not in a text field):
 
 ## Standard boxes
 
-The v1 set is a starting point and is meant to be extended (see below). All
-dimensions are in mm. "Default" is the value a new item starts with.
+The standard set is meant to be extended (see below). All dimensions are in
+mm. "Default" is the value a new item starts with.
 
-### Tray (`tray`)
+### Containers (cell-based)
 
-Plain open-top tray with optional finger notches in its walls.
-
-| Parameter | Default | Meaning |
-|---|---|---|
-| `innerWidth` | 60 | Inside width (X) |
-| `innerDepth` | 40 | Inside depth (Y) |
-| `innerHeight` | 30 | Inside height above the floor |
-| `fingerNotch` | true | Cut finger notches |
-| `notchSides` | `long` | Walls to notch: `long`, `short` or `both` |
-| `notchWidth` | 20 | Width of each notch along the wall |
-| `notchDepth` | 15 | Depth of each notch, measured down from the top edge |
-
-### Divided tray (`divided-tray`)
-
-Tray split into an N x M grid of equal compartments.
-
-| Parameter | Default | Meaning |
-|---|---|---|
-| `innerWidth` | 90 | Inside width (X) |
-| `innerDepth` | 60 | Inside depth (Y) |
-| `innerHeight` | 25 | Inside height above the floor |
-| `columns` | 3 | Compartments along X (dividers parallel to Y) |
-| `rows` | 2 | Compartments along Y (dividers parallel to X) |
-| `dividerThickness` | 1.2 | Thickness of each divider |
-| `dividerHeight` | 0 | Divider height above the floor; 0 means full inner height |
-| `fingerNotch` | false | One notch per row in the outer walls and in every column divider |
-| `notchWidth` | 18 | Width of each notch |
-| `notchDepth` | 12 | Depth of each notch, measured down from the top edge |
-
-### Card tray (`card-tray`)
-
-Holder for a stack of cards, lying flat or standing upright. The notch depth is
-derived from the height of the cavity (half of it, at least 8 mm).
-
-| Parameter | Default | Meaning |
-|---|---|---|
-| `cardWidth` | 63.5 | Width of one card |
-| `cardHeight` | 88 | Height of one card |
-| `clearance` | 1 | Extra space on each side of the cards |
-| `stackHeight` | 30 | Thickness of the stack (sleeved cards are about 0.5 mm each) |
-| `orientation` | `flat` | `flat` (face up) or `upright` (standing) |
-| `exposedHeight` | 20 | Upright only: how far the cards stick out above the walls |
-| `notchWidth` | 25 | Finger notch width; 0 means no notches |
-
-### Containers v2 (cell-based)
-
-Four newer types, each defined as one cell that repeats inside one printed part
-with shared dividers (see `docs-containers.md`). The three trays above stay for
-saved projects.
+Four types, each defined as one cell that repeats inside one printed part
+with shared dividers (see `docs-containers.md` for every parameter).
 
 * **Item tray** (`item-tray`): grid of equal cells for tokens, columns x rows, flat or scoop floor.
 * **Card tray, flat** (`card-tray-flat`): card stacks lying face up in columns, finger gaps down into the floor.
 * **Card tray, upright** (`card-tray-upright`): standing card stacks in columns, wedges in the long walls.
 * **Card tray, tilted** (`card-tray-tilted`): card dispenser, stacks leaning back with an open front, lanes in rows.
+
+The first standard set (`tray`, `divided-tray`, `card-tray`) was replaced by
+these on 2026-11-06. Project files that still use them open as before: on load
+a `tray` becomes a 1 x 1 item tray, a `divided-tray` an item tray with the same
+grid (cell size = compartment size) and a `card-tray` a flat or upright card
+tray. The outer size and the stacking settings stay the same; finger notches
+are dropped.
 
 ### Spacer (`spacer`)
 
@@ -238,11 +198,11 @@ Items can sit on top of other items, not only on the game box floor.
   apart for display only; you can still select and drag items, and the real
   positions are unchanged.
 
-Stacking features of the boxes: tray, divided tray and card tray all have a
+Stacking features of the boxes: the item tray and the three card trays all have a
 *Stacking* parameter group. These features are made for **trays with the same
 footprint and the same wall thickness** stacked directly on top of each other.
 
-**Lip + recess is the standard.** A tray, divided tray or card tray you add
+**Lip + recess is the standard.** An item tray or card tray you add
 from the palette starts with `stackTop: lip` and `stackBottom: recess`, so any
 two new trays of the same footprint lock onto each other. Switch them to *Flat*
 if you don't want it. The parameter defaults below stay `none`: projects saved
@@ -252,7 +212,7 @@ copy their source's settings.
 **Plug is a retrofit.** Use *Plug (retrofit onto a plain tray)* only to stack a
 new tray onto a tray that is already printed without a lip. The plug drops into
 the lower tray's cavity, so that cavity must be empty (it collides with the
-dividers of a divided tray) and the plug takes `plugHeight` of its height.
+dividers of an item tray with several cells) and the plug takes `plugHeight` of its height.
 
 | Parameter | Default | Meaning |
 |---|---|---|
@@ -270,9 +230,9 @@ anything else (a plain tray, platform or spacer: it simply rests on top),
 item resting on several items sits on the highest effective surface (top −
 engagement on that item); it counts as supported only by the items that meet
 it there. Gravity takes this into account. A recess needs at least 0.4 mm of
-wall left next to it (`wall/2 − stackClearance ≥ 0.4`). Finger notches cut
-through the lip. A plug needs an empty cavity below: it collides with the
-dividers of a divided tray.
+wall left next to it (`wall/2 − stackClearance ≥ 0.4`). Finger gaps and
+wedges cut through the lip. A plug needs an empty cavity below: it collides
+with the dividers of an item tray with several cells.
 
 **Platform locating ridges.** A platform with *Locate items on top* (on by
 default) gets a ridge for every item resting on its plate whose base is a
@@ -301,10 +261,10 @@ Every item with `z > 0` that rests on something is checked against the items
 it rests on (its *supporters*: those whose top − engagement is its `z`).
 
 * **Bearing areas.** Each box type says which parts of its top can carry
-  something. Tray and card tray: the wall ring. With a lip, the lip ring (outer
+  something. Item tray and card trays: the wall ring. With a lip, the lip ring (outer
   half of the wall, at the lip top) and the inner half of the wall (at the wall
   top): a recessed tray rests on the inner half while the lip sits in its
-  recess. Divided tray: walls plus the dividers that reach the wall top
+  recess. Plus the dividers between cells that reach the wall top
   (`dividerHeight` 0 or ≥ inner height); lower dividers carry nothing. Platform:
   the whole plate (its ridges are lips). Spacer, and any type without the hook:
   the whole top.
@@ -328,7 +288,7 @@ it rests on (its *supporters*: those whose top − engagement is its `z`).
 * **Plug and corner stops.** A plug pad (`inner − 2·clearance`, `plugHeight`
   deep) or a platform's corner stops must drop into an open cavity: an
   **error** when they hit walls or dividers that reach higher than the pad's
-  bottom (a plug on a divided tray), or a solid top (a plug on a spacer or a
+  bottom (a plug on an item tray with several cells), or a solid top (a plug on a spacer or a
   platform). The engagement stays `plugHeight` on anything, so gravity sinks
   the plug and the check reports the collision.
 * **Keep‑out space.** An upright card tray keeps the space above its cavity
@@ -356,7 +316,8 @@ using `footprint()`, so a new type needs no UI changes.
 
 1. Create `src/boxes/definitions/<name>.ts` and export a `BoxTypeDefinition`
    implementing `params`, `footprint`, `build`, `draw` and (optionally) `validate`.
-   Helpers such as `num`, `openBox` and the notch cutter live in `common.ts`.
+   Helpers such as `num`, `openBox` and the stacking helpers live in `common.ts`;
+   a type made of repeated cells uses the tiling framework in `tiling.ts`.
    A type whose geometry depends on the items resting on it (like the
    platform's ridges) opts in with `usesItemsAbove` and reads `item.context`;
    see DESIGN.md §4.2.
@@ -367,8 +328,8 @@ using `footprint()`, so a new type needs no UI changes.
    `keepOut`.
 2. Register it in `src/boxes/index.ts`: import it and add it to
    `standardBoxTypes`, which controls palette order.
-3. Add tests to `src/boxes/boxes.test.ts`, following the existing `describe('tray')`
-   blocks. Check at least the footprint and that the solid builds with the expected
+3. Add tests to `src/boxes/boxes.test.ts` or a file of its own, following the
+   existing `describe('item-tray')` blocks in `src/boxes/containers.test.ts`. Check at least the footprint and that the solid builds with the expected
    bounds.
 4. Run `npm test` and `npm run build`.
 

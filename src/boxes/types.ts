@@ -111,7 +111,7 @@ export interface KeepOut {
 }
 
 export interface BoxTypeDefinition {
-  /** Stable id stored in project files, e.g. "tray". */
+  /** Stable id stored in project files, e.g. "item-tray". */
   id: string;
   name: string;
   description: string;
@@ -165,7 +165,7 @@ export interface BoxTypeDefinition {
   /**
    * Top faces items stacked on this one can bear on (stack fit check). An
    * open tray returns its wall ring (with a lip: the lip ring at the top and
-   * the inner wall half at the wall top), a divided tray adds its dividers.
+   * the inner wall half at the wall top), a tiled tray adds its dividers.
    * Undefined = the whole footprint at the outer height − seatDepth (a solid
    * top). May depend on `item.context`.
    */

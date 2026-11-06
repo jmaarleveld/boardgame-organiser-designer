@@ -3,9 +3,10 @@ import { clearRegistry, registerBoxType } from '../boxes/registry';
 import { createEmptyProject } from '../model/types';
 import { findOverlaps, unsupportedItems, usableArea } from '../model/layout';
 import { fakeBox } from '../model/fakeBox.testutil';
-import { tray } from '../boxes/definitions/tray';
-import { dividedTray } from '../boxes/definitions/divided-tray';
-import { cardTray } from '../boxes/definitions/card-tray';
+import { itemTray } from '../boxes/definitions/item-tray';
+import { cardTrayFlat } from '../boxes/definitions/card-tray-flat';
+import { cardTrayUpright } from '../boxes/definitions/card-tray-upright';
+import { cardTrayTilted } from '../boxes/definitions/card-tray-tilted';
 import { spacer } from '../boxes/definitions/spacer';
 import { platform } from '../boxes/definitions/platform';
 import { defaultParams } from '../boxes/types';
@@ -388,17 +389,17 @@ describe('store', () => {
 
   describe('creation-time stacking params', () => {
     beforeEach(() => {
-      for (const d of [tray, dividedTray, cardTray, spacer, platform]) registerBoxType(d);
+      for (const d of [itemTray, cardTrayFlat, cardTrayUpright, cardTrayTilted, spacer, platform]) registerBoxType(d);
     });
 
-    it.each(['tray', 'divided-tray', 'card-tray'])('a new %s gets lip + recess', (type) => {
+    it.each(['item-tray', 'card-tray-flat', 'card-tray-upright', 'card-tray-tilted'])('a new %s gets lip + recess', (type) => {
       const id = st().addItem(type);
       const item = items().find((i) => i.id === id)!;
       expect(item.params).toMatchObject({ stackTop: 'lip', stackBottom: 'recess' });
     });
 
     it('ParamSpec defaults stay flat so saved projects keep their geometry', () => {
-      for (const d of [tray, dividedTray, cardTray]) {
+      for (const d of [itemTray, cardTrayFlat, cardTrayUpright, cardTrayTilted]) {
         expect(defaultParams(d)).toMatchObject({ stackTop: 'none', stackBottom: 'none' });
       }
     });
@@ -411,7 +412,7 @@ describe('store', () => {
     });
 
     it('duplicates keep the source params (no creation-time override)', () => {
-      const id = st().addItem('tray');
+      const id = st().addItem('item-tray');
       st().setParam(id, 'stackTop', 'none');
       st().setParam(id, 'stackBottom', 'plug');
       const copy = st().duplicateItem(id)!;
@@ -423,23 +424,24 @@ describe('store', () => {
 
     it('loading a project keeps its params as stored', () => {
       const p = createEmptyProject();
-      p.items.push({ id: 'a', type: 'tray', label: 'T', x: 1, y: 1, rotation: 0, params: {} });
+      p.items.push({ id: 'a', type: 'item-tray', label: 'T', x: 1, y: 1, rotation: 0, params: {} });
       st().loadProject(p);
       expect(items()[0].params).toEqual({});
     });
   });
 
   it('duplicate on top of a recessed tray without a lip rests on its top', () => {
-    registerBoxType(tray);
-    const id = st().addItem('tray');
+    registerBoxType(itemTray);
+    // Default item tray: 20 mm inner + 1.2 mm floor = 21.2 high (+2 with a lip).
+    const id = st().addItem('item-tray');
     st().setParam(id, 'stackTop', 'none');
     const copy = st().duplicateItemStacked(id)!;
-    expect(items().find((i) => i.id === copy)?.z).toBeCloseTo(31.2, 9);
+    expect(items().find((i) => i.id === copy)?.z).toBeCloseTo(21.2, 9);
     // Adding a lip to both: the copy re-settles with its recess on the lip.
     st().setParam(id, 'stackTop', 'lip');
     st().setParam(copy, 'stackTop', 'lip');
-    expect(items().find((i) => i.id === copy)?.z).toBeCloseTo(31.2, 9); // 33.2 − 2
+    expect(items().find((i) => i.id === copy)?.z).toBeCloseTo(21.2, 9); // 23.2 − 2
     const third = st().duplicateItemStacked(copy)!;
-    expect(items().find((i) => i.id === third)?.z).toBeCloseTo(62.4, 9);
+    expect(items().find((i) => i.id === third)?.z).toBeCloseTo(42.4, 9);
   });
 });

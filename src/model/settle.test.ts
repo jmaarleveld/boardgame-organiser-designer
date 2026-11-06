@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { clearRegistry, registerBoxType } from '../boxes/registry';
-import { tray } from '../boxes/definitions/tray';
+import { itemTray } from '../boxes/definitions/item-tray';
 import { platform } from '../boxes/definitions/platform';
 import { spacer } from '../boxes/definitions/spacer';
-import { fakeBox } from './fakeBox.testutil';
+import { fakeBox, trayParams } from './fakeBox.testutil';
 import type { ItemParams, PlacedItem, ProjectSettings } from './types';
 import { DEFAULT_SETTINGS } from './types';
 import { carriedItemIds, itemRect, layoutSummary, settle, supportersById } from './layout';
@@ -14,7 +14,7 @@ const settings: ProjectSettings = {
 };
 
 function at(id: string, type: string, x: number, y: number, params: ItemParams = {}, z?: number): PlacedItem {
-  const item: PlacedItem = { id, type, label: id.toUpperCase(), x, y, rotation: 0, params };
+  const item: PlacedItem = { id, type, label: id.toUpperCase(), x, y, rotation: 0, params: trayParams(type, params) };
   if (z !== undefined) item.z = z;
   return item;
 }
@@ -23,7 +23,7 @@ const zOf = (items: PlacedItem[]) => Object.fromEntries(items.map((i) => [i.id, 
 
 beforeEach(() => {
   clearRegistry();
-  for (const d of [fakeBox, tray, platform, spacer]) registerBoxType(d);
+  for (const d of [fakeBox, itemTray, platform, spacer]) registerBoxType(d);
 });
 
 describe('settle', () => {
@@ -68,11 +68,11 @@ describe('settle', () => {
 
   it('subtracts the engagement of the item on what it rests on (lip + recess)', () => {
     const lip = { stackTop: 'lip', stackBottom: 'recess' };
-    const items = settle([at('a', 'tray', 1, 1, lip), at('b', 'tray', 1, 1, lip), at('c', 'tray', 1, 1, lip)], settings);
+    const items = settle([at('a', 'item-tray', 1, 1, lip), at('b', 'item-tray', 1, 1, lip), at('c', 'item-tray', 1, 1, lip)], settings);
     // Tray 31.2 + 2 mm lip; the recess sinks the 2 mm lip.
     expect(zOf(items)).toEqual({ a: 0, b: 31.2, c: 62.4 });
     // A recess on a tray without a lip does not engage: it rests on the top.
-    const plain = settle([at('a', 'tray', 1, 1), at('b', 'tray', 1, 1, { stackBottom: 'recess' })], settings);
+    const plain = settle([at('a', 'item-tray', 1, 1), at('b', 'item-tray', 1, 1, { stackBottom: 'recess' })], settings);
     expect(plain[1].z).toBeCloseTo(31.2, 9);
     expect(layoutSummary(items, settings).issues).toEqual([]);
   });
@@ -91,10 +91,10 @@ describe('settle', () => {
   });
 
   it('a platform on two trays, with a recessed tray on its plate (locating ridges)', () => {
-    const t1 = at('t1', 'tray', 1, 1);
-    const t2 = at('t2', 'tray', 64.2, 1);
+    const t1 = at('t1', 'item-tray', 1, 1);
+    const t2 = at('t2', 'item-tray', 64.2, 1);
     const p = at('p', 'platform', 1, 1, { width: 126.4, depth: 43.2 });
-    const t = at('t', 'tray', 10, 5, { stackBottom: 'recess' }, 99);
+    const t = at('t', 'item-tray', 10, 5, { stackBottom: 'recess' }, 99);
     const items = settle([t1, t2, p, t], settings);
     const plate = itemRect(items[2], settings).top; // context‑free top: the plate
     expect(items[2].z).toBeCloseTo(31.2 - 2, 9); // corner stops sink 2 mm into the trays

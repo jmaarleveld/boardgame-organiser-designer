@@ -2,7 +2,9 @@ import { describe, expect, it, beforeEach } from 'vitest';
 import JSZip from 'jszip';
 import { parseXml } from './xml';
 import { createBggClient, parseSearch, parseVersions } from './bgg';
-import { createPersistence } from './persistence';
+import { createPersistence, migrateLegacyItem } from './persistence';
+import { registerAllBoxTypes } from '../boxes/index';
+import { placedFootprint } from '../model/resolve';
 import { createExporter } from './exporter';
 import { clearRegistry, registerBoxType } from '../boxes/registry';
 import { createEmptyProject, type PlacedItem, type Project } from '../model/types';
@@ -101,6 +103,52 @@ describe('persistence', () => {
     expect('z' in back.items[0]).toBe(false);
     // Infinity serialises as null, which is rejected.
     expect(() => p.fromJson(p.toJson({ ...proj, items: [item('d', { z: Infinity })] }))).toThrow(/z/);
+  });
+  it('migrates the deleted v1 tray, divided-tray and card-tray on load, keeping the footprint', () => {
+    clearRegistry();
+    registerAllBoxTypes();
+    const p = createPersistence(new MemStorage());
+    const proj = createEmptyProject();
+    const v1 = (id: string, type: string, params: PlacedItem['params'], extra: Partial<PlacedItem> = {}) =>
+      ({ ...item(id, { type, ...extra }), params }) as PlacedItem;
+    proj.items.push(
+      v1('t', 'tray', { stackTop: 'lip', fingerNotch: true, notchSides: 'both', notchWidth: 18, notchDepth: 10 }),
+      v1('tw', 'tray', { innerWidth: 50 }, { wall: 2 }),
+      v1('d', 'divided-tray', { innerWidth: 60, innerDepth: 40, dividerHeight: 10, fingerNotch: true, stackBottom: 'recess' }),
+      v1('dd', 'divided-tray', {}),
+      v1('cf', 'card-tray', { notchWidth: 20, exposedHeight: 12 }),
+      v1('cu', 'card-tray', { orientation: 'upright', exposedHeight: 15, cardWidth: 41, stackBottom: 'plug' }),
+      v1('x', 'spacer', { width: 10 }),
+    );
+    const back = p.fromJson(p.toJson(proj));
+    const byId = new Map(back.items.map((i) => [i.id, i]));
+    expect(byId.get('t')).toMatchObject({ type: 'item-tray', x: 0, y: 0, label: 't' });
+    expect(byId.get('t')!.params).toEqual({ stackTop: 'lip', innerWidth: 60, innerDepth: 40, innerHeight: 30, floorShape: 'flat' });
+    expect(byId.get('tw')).toMatchObject({ type: 'item-tray', wall: 2, params: { innerWidth: 50, innerDepth: 40, innerHeight: 30 } });
+    expect(byId.get('d')!.params).toEqual({
+      innerWidth: 19.2, innerDepth: 19.4, innerHeight: 25, columns: 3, rows: 2, dividerThickness: 1.2, dividerHeight: 10,
+      floorShape: 'flat', stackBottom: 'recess',
+    });
+    expect(byId.get('dd')!.params).toMatchObject({ innerWidth: 29.2, innerDepth: 29.4, columns: 3, rows: 2 });
+    expect(byId.get('cf')).toMatchObject({ type: 'card-tray-flat', params: {} });
+    expect(byId.get('cu')).toMatchObject({ type: 'card-tray-upright', params: { exposedHeight: 15, cardWidth: 41, stackBottom: 'plug' } });
+    expect(byId.get('cu')!.params).not.toHaveProperty('orientation');
+    expect(byId.get('x')).toEqual(proj.items[6]);
+    // Outer footprints as the v1 types had them (default wall 1.6, floor 1.2).
+    const fp = (id: string) => placedFootprint(byId.get(id)!, back.settings);
+    const close = (id: string, w: number, d: number, h: number) => {
+      const f = fp(id);
+      expect([f.width, f.depth, f.height].map((v) => Math.round(v * 1e6) / 1e6), id).toEqual([w, d, h]);
+    };
+    close('t', 63.2, 43.2, 33.2);
+    close('tw', 54, 44, 31.2);
+    close('d', 63.2, 43.2, 26.2);
+    close('dd', 93.2, 63.2, 26.2);
+    close('cf', 68.7, 93.2, 31.2);
+    close('cu', 34.2, 46.2, 76.2); // plug 2 + floor 1.2 + 88 − 15
+    // Already migrated items are left alone.
+    const again = back.items.map(migrateLegacyItem);
+    again.forEach((i, n) => expect(i).toBe(back.items[n]));
   });
 });
 

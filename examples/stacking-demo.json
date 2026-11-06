@@ -20,104 +20,141 @@
   "items": [
     {
       "id": "a1",
-      "type": "tray",
+      "type": "item-tray",
       "label": "A1 lip tray, base (OK)",
       "x": 1,
       "y": 1,
       "params": {
-        "stackTop": "lip"
+        "stackTop": "lip",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "a2",
-      "type": "tray",
+      "type": "item-tray",
       "label": "A2 recess on lip, lip on top (OK)",
       "x": 1,
       "y": 1,
       "z": 31.2,
       "params": {
         "stackTop": "lip",
-        "stackBottom": "recess"
+        "stackBottom": "recess",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "a3",
-      "type": "tray",
+      "type": "item-tray",
       "label": "A3 recess on lip, top level (OK)",
       "x": 1,
       "y": 1,
       "z": 62.4,
       "params": {
-        "stackBottom": "recess"
+        "stackBottom": "recess",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "b1",
-      "type": "tray",
+      "type": "item-tray",
       "label": "B1 plain tray, base (OK)",
       "x": 70.2,
       "y": 1,
-      "params": {},
+      "params": {
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
+      },
       "rotation": 0
     },
     {
       "id": "b2",
-      "type": "tray",
+      "type": "item-tray",
       "label": "B2 plug on plain tray (OK)",
       "x": 70.2,
       "y": 1,
       "z": 29.2,
       "params": {
-        "stackBottom": "plug"
+        "stackBottom": "plug",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "c1",
-      "type": "divided-tray",
+      "type": "item-tray",
       "label": "C1 divided tray, base (flagged with C2)",
       "x": 139.4,
       "y": 1,
       "params": {
-        "innerWidth": 60,
-        "innerDepth": 40
+        "innerWidth": 19.2,
+        "innerDepth": 19.4,
+        "innerHeight": 25,
+        "columns": 3,
+        "rows": 2,
+        "dividerThickness": 1.2,
+        "dividerHeight": 0,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "c2",
-      "type": "tray",
+      "type": "item-tray",
       "label": "C2 plug on dividers (error)",
       "x": 139.4,
       "y": 1,
       "z": 24.2,
       "params": {
-        "stackBottom": "plug"
+        "stackBottom": "plug",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "d1",
-      "type": "tray",
+      "type": "item-tray",
       "label": "D1 tray under platform (OK)",
       "x": 208.6,
       "y": 1,
       "params": {
-        "innerWidth": 40
+        "innerWidth": 40,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "d2",
-      "type": "tray",
+      "type": "item-tray",
       "label": "D2 tray under platform (OK)",
       "x": 251.8,
       "y": 1,
       "params": {
-        "innerWidth": 40
+        "innerWidth": 40,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
@@ -136,35 +173,44 @@
     },
     {
       "id": "d4",
-      "type": "tray",
+      "type": "item-tray",
       "label": "D4 tray on platform (OK)",
       "x": 208.6,
       "y": 1,
       "z": 33.2,
       "params": {
-        "innerWidth": 83.2
+        "innerWidth": 83.2,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "e1",
-      "type": "tray",
+      "type": "item-tray",
       "label": "E1 tray under platform (OK)",
       "x": 301,
       "y": 1,
       "params": {
-        "innerDepth": 90
+        "innerDepth": 90,
+        "innerWidth": 60,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "e2",
-      "type": "tray",
+      "type": "item-tray",
       "label": "E2 tray under platform (OK)",
       "x": 364.2,
       "y": 1,
       "params": {
-        "innerDepth": 90
+        "innerDepth": 90,
+        "innerWidth": 60,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
@@ -184,45 +230,47 @@
     },
     {
       "id": "e4",
-      "type": "card-tray",
+      "type": "card-tray-flat",
       "label": "E4 flat cards on platform (OK)",
       "x": 301,
       "y": 1,
       "z": 33.2,
-      "params": {
-        "orientation": "flat"
-      },
+      "params": {},
       "rotation": 0
     },
     {
       "id": "e5",
-      "type": "tray",
+      "type": "item-tray",
       "label": "E5 tray on platform (OK)",
       "x": 369.7,
       "y": 1,
       "z": 33.2,
       "params": {
         "innerWidth": 54.5,
-        "innerDepth": 90
+        "innerDepth": 90,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "f1",
-      "type": "tray",
+      "type": "item-tray",
       "label": "F1 big lip tray (OK)",
       "x": 1,
       "y": 100.2,
       "params": {
         "stackTop": "lip",
         "innerWidth": 186.4,
-        "innerDepth": 126.8
+        "innerDepth": 126.8,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "f2",
-      "type": "tray",
+      "type": "item-tray",
       "label": "F2 strip on big tray (OK)",
       "x": 1,
       "y": 100.2,
@@ -230,13 +278,15 @@
       "params": {
         "stackBottom": "recess",
         "innerWidth": 60,
-        "innerDepth": 126.8
+        "innerDepth": 126.8,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "f3",
-      "type": "tray",
+      "type": "item-tray",
       "label": "F3 strip on big tray (OK)",
       "x": 64.2,
       "y": 100.2,
@@ -244,13 +294,15 @@
       "params": {
         "stackBottom": "recess",
         "innerWidth": 60,
-        "innerDepth": 126.8
+        "innerDepth": 126.8,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "f4",
-      "type": "tray",
+      "type": "item-tray",
       "label": "F4 strip on big tray (OK)",
       "x": 127.4,
       "y": 100.2,
@@ -258,128 +310,173 @@
       "params": {
         "stackBottom": "recess",
         "innerWidth": 60,
-        "innerDepth": 126.8
+        "innerDepth": 126.8,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "g1",
-      "type": "tray",
+      "type": "item-tray",
       "label": "G1 lip tray (OK)",
       "x": 196.6,
       "y": 100.2,
       "params": {
-        "stackTop": "lip"
+        "stackTop": "lip",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "g2",
-      "type": "tray",
+      "type": "item-tray",
       "label": "G2 narrow recess on three walls (OK)",
       "x": 196.6,
       "y": 100.2,
       "z": 31.2,
       "params": {
         "stackBottom": "recess",
-        "innerWidth": 40
+        "innerWidth": 40,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "g3",
-      "type": "tray",
+      "type": "item-tray",
       "label": "G3 lip tray (flagged with G5)",
       "x": 266.6,
       "y": 100.2,
       "params": {
-        "stackTop": "lip"
+        "stackTop": "lip",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "g4",
-      "type": "tray",
+      "type": "item-tray",
       "label": "G4 lip tray (flagged with G5)",
       "x": 329.8,
       "y": 100.2,
       "params": {
-        "stackTop": "lip"
+        "stackTop": "lip",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "g5",
-      "type": "tray",
+      "type": "item-tray",
       "label": "G5 recess across two lips, lips under floor (error)",
       "x": 266.6,
       "y": 100.2,
       "z": 31.2,
       "params": {
         "stackBottom": "recess",
-        "innerWidth": 123.2
+        "innerWidth": 123.2,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "h1",
-      "type": "tray",
+      "type": "item-tray",
       "label": "H1 plain tray, base (OK)",
       "x": 399,
       "y": 100.2,
-      "params": {},
+      "params": {
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
+      },
       "rotation": 0
     },
     {
       "id": "h2",
-      "type": "tray",
+      "type": "item-tray",
       "label": "H2 recess on plain tray, rests on top (OK)",
       "x": 399,
       "y": 100.2,
       "z": 31.2,
       "params": {
-        "stackBottom": "recess"
+        "stackBottom": "recess",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "i1",
-      "type": "tray",
+      "type": "item-tray",
       "label": "I1 tray, base (OK)",
       "x": 1,
       "y": 236.2,
-      "params": {},
+      "params": {
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
+      },
       "rotation": 0
     },
     {
       "id": "i2",
-      "type": "tray",
+      "type": "item-tray",
       "label": "I2 overhangs on one wall, may tip (warning)",
       "x": 31,
       "y": 236.2,
       "z": 31.2,
-      "params": {},
+      "params": {
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
+      },
       "rotation": 0
     },
     {
       "id": "j1",
-      "type": "tray",
+      "type": "item-tray",
       "label": "J1 tall tray (OK)",
       "x": 100.2,
       "y": 236.2,
       "params": {
-        "innerHeight": 30
+        "innerHeight": 30,
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "j2",
-      "type": "tray",
+      "type": "item-tray",
       "label": "J2 short tray (OK)",
       "x": 163.4,
       "y": 236.2,
       "params": {
-        "innerHeight": 20
+        "innerHeight": 20,
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
@@ -398,19 +495,22 @@
     },
     {
       "id": "l1",
-      "type": "tray",
+      "type": "item-tray",
       "label": "L1 lip tray, level 1 (OK)",
       "x": 301.8,
       "y": 236.2,
       "params": {
         "stackTop": "lip",
-        "innerWidth": 40
+        "innerWidth": 40,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "l2",
-      "type": "tray",
+      "type": "item-tray",
       "label": "L2 level 2 (OK)",
       "x": 301.8,
       "y": 236.2,
@@ -418,13 +518,16 @@
       "params": {
         "stackTop": "lip",
         "stackBottom": "recess",
-        "innerWidth": 40
+        "innerWidth": 40,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "l3",
-      "type": "tray",
+      "type": "item-tray",
       "label": "L3 level 3 (OK)",
       "x": 301.8,
       "y": 236.2,
@@ -432,13 +535,16 @@
       "params": {
         "stackTop": "lip",
         "stackBottom": "recess",
-        "innerWidth": 40
+        "innerWidth": 40,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "l4",
-      "type": "tray",
+      "type": "item-tray",
       "label": "L4 level 4, too tall (error)",
       "x": 301.8,
       "y": 236.2,
@@ -446,17 +552,25 @@
       "params": {
         "stackTop": "lip",
         "stackBottom": "recess",
-        "innerWidth": 40
+        "innerWidth": 40,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "m1",
-      "type": "tray",
+      "type": "item-tray",
       "label": "M1 tray under platform (OK)",
       "x": 351,
       "y": 236.2,
-      "params": {},
+      "params": {
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
+      },
       "rotation": 0
     },
     {
@@ -488,36 +602,42 @@
     },
     {
       "id": "n1",
-      "type": "tray",
+      "type": "item-tray",
       "label": "N1 rotated lip tray (OK)",
       "x": 460.2,
       "y": 236.2,
       "params": {
-        "stackTop": "lip"
+        "stackTop": "lip",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 90
     },
     {
       "id": "n2",
-      "type": "tray",
+      "type": "item-tray",
       "label": "N2 rotated recess on lip (OK)",
       "x": 460.2,
       "y": 236.2,
       "z": 31.2,
       "params": {
-        "stackBottom": "recess"
+        "stackBottom": "recess",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 90
     },
     {
       "id": "o1",
-      "type": "card-tray",
+      "type": "card-tray-upright",
       "label": "O1 upright cards (flagged with O2)",
       "x": 1,
       "y": 305.4,
-      "params": {
-        "orientation": "upright"
-      },
+      "params": {},
       "rotation": 0
     },
     {
@@ -536,23 +656,27 @@
     },
     {
       "id": "o3",
-      "type": "card-tray",
+      "type": "card-tray-upright",
       "label": "O3 tall upright cards stick out of the box (error)",
       "x": 41,
       "y": 305.4,
       "params": {
-        "orientation": "upright",
         "cardHeight": 130
       },
       "rotation": 0
     },
     {
       "id": "p1",
-      "type": "tray",
+      "type": "item-tray",
       "label": "P1 tray, base (OK)",
       "x": 81.2,
       "y": 305.4,
-      "params": {},
+      "params": {
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
+      },
       "rotation": 0
     },
     {
@@ -570,37 +694,44 @@
     },
     {
       "id": "p3",
-      "type": "tray",
+      "type": "item-tray",
       "label": "P3 wider than platform, floating (warning)",
       "x": 81.2,
       "y": 305.4,
       "z": 33.2,
       "params": {
-        "innerWidth": 90
+        "innerWidth": 90,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "q1",
-      "type": "tray",
+      "type": "item-tray",
       "label": "Q1 tray under platform (OK)",
       "x": 180.4,
       "y": 305.4,
       "params": {
         "innerWidth": 60,
-        "innerDepth": 80
+        "innerDepth": 80,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "q2",
-      "type": "tray",
+      "type": "item-tray",
       "label": "Q2 tray under platform (OK)",
       "x": 243.6,
       "y": 305.4,
       "params": {
         "innerWidth": 60,
-        "innerDepth": 80
+        "innerDepth": 80,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
@@ -620,7 +751,7 @@
     },
     {
       "id": "q4",
-      "type": "tray",
+      "type": "item-tray",
       "label": "Q4 recessed tray on ridges (OK)",
       "x": 181.6,
       "y": 307,
@@ -629,13 +760,15 @@
         "stackTop": "lip",
         "stackBottom": "recess",
         "innerWidth": 56.8,
-        "innerDepth": 76.8
+        "innerDepth": 76.8,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "q5",
-      "type": "divided-tray",
+      "type": "item-tray",
       "label": "Q5 recessed divided tray on ridges (OK)",
       "x": 241.6,
       "y": 307,
@@ -643,192 +776,252 @@
       "params": {
         "stackTop": "lip",
         "stackBottom": "recess",
-        "innerWidth": 56.8,
-        "innerDepth": 76.8,
+        "innerWidth": 27.8,
+        "innerDepth": 37.8,
         "columns": 2,
-        "rows": 2
+        "rows": 2,
+        "innerHeight": 25,
+        "dividerThickness": 1.2,
+        "dividerHeight": 0,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "r1",
-      "type": "tray",
+      "type": "item-tray",
       "label": "R1 big lip tray (OK)",
       "x": 312.8,
       "y": 305.4,
       "params": {
         "stackTop": "lip",
         "innerWidth": 123.2,
-        "innerDepth": 83.2
+        "innerDepth": 83.2,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "r2",
-      "type": "tray",
+      "type": "item-tray",
       "label": "R2 2 × 2 grid corner, may tip (warning)",
       "x": 312.8,
       "y": 305.4,
       "z": 31.2,
       "params": {
-        "stackBottom": "recess"
+        "stackBottom": "recess",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "r3",
-      "type": "tray",
+      "type": "item-tray",
       "label": "R3 2 × 2 grid corner, may tip (warning)",
       "x": 376,
       "y": 305.4,
       "z": 31.2,
       "params": {
-        "stackBottom": "recess"
+        "stackBottom": "recess",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "r4",
-      "type": "tray",
+      "type": "item-tray",
       "label": "R4 2 × 2 grid corner, may tip (warning)",
       "x": 312.8,
       "y": 348.6,
       "z": 31.2,
       "params": {
-        "stackBottom": "recess"
+        "stackBottom": "recess",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "r5",
-      "type": "tray",
+      "type": "item-tray",
       "label": "R5 2 × 2 grid corner, may tip (warning)",
       "x": 376,
       "y": 348.6,
       "z": 31.2,
       "params": {
-        "stackBottom": "recess"
+        "stackBottom": "recess",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "s1",
-      "type": "tray",
+      "type": "item-tray",
       "label": "S1 big lip tray (OK)",
       "x": 1,
       "y": 397.8,
       "params": {
         "stackTop": "lip",
         "innerWidth": 186.4,
-        "innerDepth": 126.4
+        "innerDepth": 126.4,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "s2",
-      "type": "tray",
+      "type": "item-tray",
       "label": "S2 3 × 3 grid corner, may tip (warning)",
       "x": 1,
       "y": 397.8,
       "z": 31.2,
       "params": {
-        "stackBottom": "recess"
+        "stackBottom": "recess",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "s3",
-      "type": "tray",
+      "type": "item-tray",
       "label": "S3 3 × 3 grid edge, may tip (warning)",
       "x": 64.2,
       "y": 397.8,
       "z": 31.2,
       "params": {
-        "stackBottom": "recess"
+        "stackBottom": "recess",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "s4",
-      "type": "tray",
+      "type": "item-tray",
       "label": "S4 3 × 3 grid corner, may tip (warning)",
       "x": 127.4,
       "y": 397.8,
       "z": 31.2,
       "params": {
-        "stackBottom": "recess"
+        "stackBottom": "recess",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "s5",
-      "type": "tray",
+      "type": "item-tray",
       "label": "S5 3 × 3 grid edge, may tip (warning)",
       "x": 1,
       "y": 441,
       "z": 31.2,
       "params": {
-        "stackBottom": "recess"
+        "stackBottom": "recess",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "s6",
-      "type": "tray",
+      "type": "item-tray",
       "label": "S6 3 × 3 grid middle, rests on nothing (error)",
       "x": 64.2,
       "y": 441,
       "z": 31.2,
       "params": {
-        "stackBottom": "recess"
+        "stackBottom": "recess",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "s7",
-      "type": "tray",
+      "type": "item-tray",
       "label": "S7 3 × 3 grid edge, may tip (warning)",
       "x": 127.4,
       "y": 441,
       "z": 31.2,
       "params": {
-        "stackBottom": "recess"
+        "stackBottom": "recess",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "s8",
-      "type": "tray",
+      "type": "item-tray",
       "label": "S8 3 × 3 grid corner, may tip (warning)",
       "x": 1,
       "y": 484.2,
       "z": 31.2,
       "params": {
-        "stackBottom": "recess"
+        "stackBottom": "recess",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "s9",
-      "type": "tray",
+      "type": "item-tray",
       "label": "S9 3 × 3 grid edge, may tip (warning)",
       "x": 64.2,
       "y": 484.2,
       "z": 31.2,
       "params": {
-        "stackBottom": "recess"
+        "stackBottom": "recess",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     },
     {
       "id": "s10",
-      "type": "tray",
+      "type": "item-tray",
       "label": "S10 3 × 3 grid corner, may tip (warning)",
       "x": 127.4,
       "y": 484.2,
       "z": 31.2,
       "params": {
-        "stackBottom": "recess"
+        "stackBottom": "recess",
+        "innerWidth": 60,
+        "innerDepth": 40,
+        "innerHeight": 30,
+        "floorShape": "flat"
       },
       "rotation": 0
     }

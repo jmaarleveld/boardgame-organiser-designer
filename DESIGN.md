@@ -148,7 +148,7 @@ needs an empty cavity below and takes `plugHeight` of it) is an `(inner − 2·c
 the floor (engagement = `plugHeight`, floor at `Z = plugHeight`, the local
 origin stays the lowest point). Footprint height = `plug + floor + inner + lip`.
 They are designed for same‑footprint, same‑wall trays. Lip + recess is the
-standard: the three cavity types set `newItemParams: { stackTop: 'lip',
+standard: the four cavity types set `newItemParams: { stackTop: 'lip',
 stackBottom: 'recess' }`.
 
 **Creation‑time params.** `BoxTypeDefinition.newItemParams?` holds values for
@@ -159,13 +159,10 @@ the sample resolves missing keys against the ParamSpec defaults, so changing
 `newItemParams` never changes existing geometry. The `platform` type is
 a plate with optional corner stops (engagement = `stopHeight`).
 
-### 4.1 Initial standard box set (v1 — a starting point we will iterate on)
+### 4.1 Standard box set
 
 | id             | Purpose                                     | Key params |
 |----------------|---------------------------------------------|------------|
-| `tray`         | Plain open‑top tray (v1, kept for saved projects) | innerWidth/Depth/Height, fingerNotch, notchWidth, notchDepth, notchSides (`long`/`short`/`both`) |
-| `divided-tray` | Tray with an N×M grid of compartments (v1, kept for saved projects) | innerWidth/Depth/Height, columns, rows, dividerThickness, dividerHeight |
-| `card-tray`    | Holder for a card stack (v1, kept for saved projects) | cardWidth, cardHeight, clearance, stackHeight, orientation (`flat`/`upright`), exposedHeight (upright), notchWidth |
 | `item-tray`    | Token tray, N×M cells, flat or scoop floor  | innerWidth/Depth/Height (one cell), columns, rows, dividerThickness, dividerHeight, floorShape (`flat`/`scoop`), scoopSides (`long`/`short`), scoopRadius |
 | `card-tray-flat` | Card stacks lying flat, finger gaps to the floor, repeats along X | cardParams, columns, dividerThickness, gapWidth, gapFloorDepth, gapReach, gapSides (`sides`/`ends`/`both`) |
 | `card-tray-upright` | Card stacks standing, wedges in the long walls, repeats along X | cardParams, exposedHeight, columns, dividerThickness, dividerHeight, wedgeTopWidth, wedgeBottomWidth, wedgeDepth |
@@ -174,14 +171,22 @@ a plate with optional corner stops (engagement = `stopHeight`).
 | `platform`     | Plate bridging trays to carry the next level | width, depth, thickness, cornerStops, stopSize, stopHeight, stopInset, locateItems |
 
 `cardParams` (`common.ts`, group "Cards") = cardWidth, cardHeight, clearance,
-stackHeight. The four v2 types are built on the tiling framework (§4.4); the
+stackHeight. The four container types are built on the tiling framework (§4.4); the
 tilted tray is the first **chiral** type (its mirror image is a different
 part), which makes the open question about the mirrored assembly view in
 `docs-box-design-ideas.md` ("Decisions so far") live.
 
-Finger notches are rounded slots (a box plus a cylinder at the bottom of the
-cut) subtracted from the wall, centred on the wall, `notchWidth` wide and
-`notchDepth` deep from the top edge.
+**v1 types deleted, migrated on load.** The v1 `tray`, `divided-tray` and
+`card-tray` (with rounded finger notches) were deleted on 2026-11-06.
+`validateProject` (`services/persistence.ts`) maps them with
+`migrateLegacyItem`, keeping the outer footprint, the stacking params and the
+wall / floor overrides: `tray` → `item-tray` 1 × 1 with the same inner size;
+`divided-tray` (inner W × D, c × r, dividers t) → `item-tray` c × r with cells
+(W − (c−1)·t)/c × (D − (r−1)·t)/r; `card-tray` → `card-tray-flat` or
+`card-tray-upright` by its `orientation`. Finger notch params are dropped (no
+equivalent); omitted params are filled with the v1 defaults where those
+differ. `examples/stacking-demo.json` and the sample project were migrated
+with the same function.
 
 ### 4.2 Build context (geometry that depends on other items)
 
@@ -238,10 +243,11 @@ the game box frame in one place, `localToBoxRect` in `src/model/resolve.ts`
   (default), `lip` (a locating lip / ridge: carries a flat base resting on it,
   must otherwise lie under a recess), `low` (solid, carries nothing). Without
   the hook (`bearingAreasOf`): the whole footprint at `height − seatDepth`.
-  Tray / card tray (`cavityBearingAreas` in `common.ts`): the wall ring at the
-  wall top; with a lip the lip ring (outer `wall/2`, role `lip`, at the lip top)
-  plus the inner wall half at the wall top. Divided tray: plus every divider at
-  its top, role `low` when `dividerHeight` is below the inner height. Platform:
+  Container types (`tiledBearingAreas`, outer ring via `cavityBearingAreas` in
+  `common.ts`): the wall ring at the wall top; with a lip the lip ring (outer
+  `wall/2`, role `lip`, at the lip top) plus the inner wall half at the wall
+  top; plus every divider at its top, role `low` when `dividerHeight` is below
+  the inner height. Platform:
   the plate at the plate top plus its ridges (role `lip`). Spacer: the whole top.
 * `baseFeatures?(item): BaseFeature[]` — `{ kind: 'recess' | 'protrusion', x,
   y, width, depth, height, name }`. Cavity types (`cavityBaseFeatures`): the
@@ -324,8 +330,7 @@ rounded to whole numbers ≥ 1); `tiledFootprint`; `cellFrames` (row‑major, ro
 0 = front, col 0 = left); `dividerRects` (one per column boundary spanning the
 inner depth, one per row boundary spanning the inner width, role `divider`);
 `tiledBuild` = `stackedBlock` (outer box + lip ring + plug pad − recess ring,
-no cavity; `stackedOpenBox` is `stackedBlock` minus one cavity, so the v1
-types are unchanged) minus the strips above lowered dividers minus every
+no cavity) minus the strips above lowered dividers minus every
 cell's cutters, in one boolean; `tiledDraw` (cavities, then dividers, then
 notches); `tiledBearingAreas` (outer ring via `cavityBearingAreas`, dividers
 as `bearing` or `low`, plus cell areas); `tiledBaseFeatures`;

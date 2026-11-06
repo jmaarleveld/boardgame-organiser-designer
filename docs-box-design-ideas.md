@@ -1,8 +1,8 @@
 # Box design ideas and open questions
 
-Working notes for the standard organizer set. The v1 set (tray, divided tray,
-card tray, spacer, platform) is a starting point; this file collects proposed
-additions and the questions whose answers change the designs.
+Working notes for the standard organizer set (item tray, flat / upright /
+tilted card trays, spacer, platform); this file collects proposed additions
+and the questions whose answers change the designs.
 Last updated 2026-11-06.
 
 ## Proposed additions and changes
@@ -73,7 +73,7 @@ Last updated 2026-11-06.
   not the engine.
 - The assembly view is mirrored in Y so it reads like the top view; revisit when
   the first chiral box type (tilted card well) is added.
-- Lip/recess is the standard locking mechanism: new trays, divided trays and card
+- Lip/recess is the standard locking mechanism: new item trays and card
   trays get `stackTop: lip` and `stackBottom: recess`. The parameter default stays
   `none`, so saved projects keep their geometry. The plug stays only as a
   retrofit option for putting a tray onto an already printed plain tray
@@ -83,8 +83,12 @@ Last updated 2026-11-06.
 - **Containers v2** (decided and built 2026-11-06, commits eaafa38, 4fedc48):
   one cell per box type plus a tiling framework (`tiling.ts`) that repeats the
   cell in columns and/or rows with shared dividers. Four types: `item-tray`,
-  `card-tray-flat`, `card-tray-upright`, `card-tray-tilted`. The v1 `tray`,
-  `divided-tray` and `card-tray` stay registered for saved projects; retiring
-  them from the palette is open. The tilted tray is the first chiral type, so
+  `card-tray-flat`, `card-tray-upright`, `card-tray-tilted`. The tilted tray is the first chiral type, so
   the mirrored assembly view question above is now live. Details in
   `docs-containers.md`.
+- **v1 types deleted** (decided 2026-11-06): `tray`, `divided-tray` and
+  `card-tray` are gone from the code. Saved projects are migrated on load to
+  the containers v2 types with identical footprints and stacking params
+  (`tray` → `item-tray` 1 × 1, `divided-tray` → `item-tray` c × r,
+  `card-tray` → `card-tray-flat` / `card-tray-upright`); finger notches are
+  dropped.

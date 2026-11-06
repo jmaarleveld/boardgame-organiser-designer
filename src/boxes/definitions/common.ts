@@ -1,10 +1,10 @@
 /**
- * Shared helpers for box definitions: typed parameter access and the finger
- * notch cutter. Local frame: X = width, Y = depth, Z = up, floor on Z = 0.
+ * Shared helpers for box definitions: typed parameter access, stacking and
+ * card parameters. Local frame: X = width, Y = depth, Z = up, floor on Z = 0.
  */
 import type { ResolvedItem } from '../../model/types';
 import type { GeometryKernel, Solid } from '../../geometry/types';
-import type { BaseFeature, BearingArea, ParamSpec, TopViewFeature } from '../types';
+import type { BaseFeature, BearingArea, ParamSpec } from '../types';
 
 /** Overshoot used to make boolean cuts clean (cutters poke through faces). */
 export const EPS = 0.01;
@@ -34,64 +34,6 @@ export function requirePositive(problems: string[], label: string, value: number
   if (!(value > 0)) problems.push(`${label} must be greater than 0 (is ${value}).`);
 }
 
-/**
- * A wall (or divider) to cut a finger notch into.
- * `axis` is the direction the wall runs along: 'x' = wall parallel to X
- * (its thickness is along Y), 'y' = wall parallel to Y (thickness along X).
- */
-export interface NotchSpec {
-  axis: 'x' | 'y';
-  /** Centre of the notch along the wall's running axis. */
-  center: number;
-  /** Min coordinate of the wall along its thickness axis. */
-  wallPos: number;
-  /** Wall thickness. */
-  thickness: number;
-  /** Z of the wall's top edge. */
-  top: number;
-  /** Notch width along the wall. */
-  width: number;
-  /** Notch depth from the top edge. */
-  depth: number;
-  /** Extra material above `top` the cutter must also clear (e.g. a stacking lip). */
-  above?: number;
-}
-
-/**
- * Rounded‑bottom slot (box + cylinder) through the wall thickness, oversized by
- * EPS on both faces and above the top so the boolean is clean.
- */
-export function notchCutter(kernel: GeometryKernel, n: NotchSpec): Solid | null {
-  if (!(n.width > 0) || !(n.depth > 0) || !(n.thickness > 0)) return null;
-  const r = n.width / 2;
-  const zc = n.top - n.depth + r; // centre of the rounded bottom
-  const len = n.thickness + 2 * EPS;
-  const parts: Solid[] = [];
-  const rectBottom = Math.min(zc, n.top);
-  const rectHeight = n.top + Math.max(0, n.above ?? 0) + EPS - rectBottom;
-  if (n.axis === 'x') {
-    const y0 = n.wallPos - EPS;
-    if (rectHeight > 0) parts.push(kernel.box(n.width, len, rectHeight, [n.center - r, y0, rectBottom]));
-    // Cylinder along +Z rotated so its axis runs along +Y.
-    const cyl = kernel.rotate(kernel.cylinder(r, len), [-90, 0, 0]);
-    parts.push(kernel.translate(cyl, [n.center, y0, zc]));
-  } else {
-    const x0 = n.wallPos - EPS;
-    if (rectHeight > 0) parts.push(kernel.box(len, n.width, rectHeight, [x0, n.center - r, rectBottom]));
-    // Cylinder along +Z rotated so its axis runs along +X.
-    const cyl = kernel.rotate(kernel.cylinder(r, len), [0, 90, 0]);
-    parts.push(kernel.translate(cyl, [x0, n.center, zc]));
-  }
-  return parts.length === 1 ? parts[0] : kernel.union(parts);
-}
-
-/** Top‑view rectangle for a notch. */
-export function notchRect(n: NotchSpec): TopViewFeature {
-  return n.axis === 'x'
-    ? { kind: 'rect', role: 'notch', x: n.center - n.width / 2, y: n.wallPos, w: n.width, h: n.thickness }
-    : { kind: 'rect', role: 'notch', x: n.wallPos, y: n.center - n.width / 2, w: n.thickness, h: n.width };
-}
-
 /** Outer box minus an open‑top cavity (inner + 2·wall, height inner + floor). */
 export function openBox(
   kernel: GeometryKernel,
@@ -104,51 +46,6 @@ export function openBox(
   const outer = kernel.box(innerWidth + 2 * wall, innerDepth + 2 * wall, innerHeight + floor);
   const cavity = kernel.box(innerWidth, innerDepth, innerHeight + EPS, [wall, wall, floor]);
   return kernel.difference(outer, [cavity]);
-}
-
-/** Notch specs for the two walls running along `axis` of a simple open box, centred. */
-export function wallPairNotches(
-  axis: 'x' | 'y',
-  innerWidth: number,
-  innerDepth: number,
-  innerHeight: number,
-  wall: number,
-  floor: number,
-  width: number,
-  depth: number,
-): NotchSpec[] {
-  const top = innerHeight + floor;
-  if (axis === 'x') {
-    const center = wall + innerWidth / 2;
-    return [
-      { axis, center, wallPos: 0, thickness: wall, top, width, depth },
-      { axis, center, wallPos: wall + innerDepth, thickness: wall, top, width, depth },
-    ];
-  }
-  const center = wall + innerDepth / 2;
-  return [
-    { axis, center, wallPos: 0, thickness: wall, top, width, depth },
-    { axis, center, wallPos: wall + innerWidth, thickness: wall, top, width, depth },
-  ];
-}
-
-/** Common checks for a notch cut from a wall of inner span `span`. */
-export function validateNotch(
-  problems: string[],
-  width: number,
-  depth: number,
-  span: number,
-  innerHeight: number,
-  where: string,
-): void {
-  requirePositive(problems, 'Notch width', width);
-  requirePositive(problems, 'Notch depth', depth);
-  if (width >= span) {
-    problems.push(`Notch width (${width} mm) must be smaller than the ${where} it is cut from (${round(span)} mm).`);
-  }
-  if (depth > innerHeight) {
-    problems.push(`Notch depth (${depth} mm) exceeds the inner height (${innerHeight} mm) and would cut into the floor.`);
-  }
 }
 
 export function round(v: number): number {
@@ -166,8 +63,8 @@ export type StackBottom = (typeof STACK_BOTTOMS)[number];
 export const MIN_RECESS_WALL = 0.4;
 
 /**
- * "Stacking" parameter group shared by every cavity type (tray, divided tray,
- * card tray). Designed for same‑footprint, same‑wall trays stacked directly
+ * "Stacking" parameter group shared by every cavity type (item tray and the
+ * card trays). Designed for same‑footprint, same‑wall trays stacked directly
  * on top of each other.
  */
 export const stackingParams: ParamSpec[] = [
@@ -301,21 +198,14 @@ export function stackedHeight(innerHeight: number, floor: number, s: Stacking): 
   return s.plugH + floor + innerHeight + s.lipH;
 }
 
-/** Raise notches by the plug height and let them cut through the lip. */
-export function stackNotches(notches: NotchSpec[], s: Stacking): NotchSpec[] {
-  if (!s.plugH && !s.lipH) return notches;
-  return notches.map((n) => ({ ...n, top: n.top + s.plugH, above: s.lipH }));
-}
-
 /**
  * Solid outer block of a stackable cavity box (outer W × D, `height` = floor +
  * inner height above the plug) with the stacking features but no cavity:
  * optional plug pad below the floor (the block starts at Z = plugH; the pad
  * is the inner area W − 2·wall minus the clearance), optional lip ring
  * (outer wall/2) above the wall top, optional recess ring cut from the outer
- * bottom edge. `cutters` (cavities, dividers, notches, …) are subtracted in
- * the same boolean as the recess ring; they come first so a single‑cavity box
- * is exactly the v1 `stackedOpenBox`.
+ * bottom edge. `cutters` (cavities, dividers, access features, …) are
+ * subtracted in the same boolean as the recess ring.
  */
 export function stackedBlock(
   kernel: GeometryKernel,
@@ -355,24 +245,6 @@ export function stackedBlock(
     }
   }
   return all.length ? kernel.difference(solid, all) : solid;
-}
-
-/**
- * Open box with the stacking features (see `stackedBlock`): the block of
- * outer size inner + 2·wall minus one open‑top cavity that also clears the
- * lip.
- */
-export function stackedOpenBox(
-  kernel: GeometryKernel,
-  innerWidth: number,
-  innerDepth: number,
-  innerHeight: number,
-  wall: number,
-  floor: number,
-  s: Stacking,
-): Solid {
-  const cavity = kernel.box(innerWidth, innerDepth, innerHeight + s.lipH + EPS, [wall, wall, s.plugH + floor]);
-  return stackedBlock(kernel, innerWidth + 2 * wall, innerDepth + 2 * wall, floor + innerHeight, wall, s, [cavity]);
 }
 
 /** Validation of the stacking parameters for a cavity box. */
@@ -472,7 +344,7 @@ export function cavityBaseFeatures(W: number, D: number, wall: number, s: Stacki
 
 /* ---------------------------------------------------------------- cards */
 
-/** "Cards" parameter group shared by the card holders (same specs as the v1 card tray). */
+/** "Cards" parameter group shared by the card holders. */
 export const cardParams: ParamSpec[] = [
   { key: 'cardWidth', label: 'Card width', kind: 'number', default: 63.5, min: 1, step: 0.5, unit: 'mm', group: 'Cards' },
   { key: 'cardHeight', label: 'Card height', kind: 'number', default: 88, min: 1, step: 0.5, unit: 'mm', group: 'Cards' },
