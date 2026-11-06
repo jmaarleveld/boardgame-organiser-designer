@@ -385,6 +385,39 @@ describe('card-tray-tilted', () => {
     expect(saved).toBeGreaterThan(5000);
   });
 
+  it('hollow back with plate wedges: a wall-thick lining seals the pocket around the back wedge', () => {
+    const it = item();
+    const s = build(it);
+    const g = tiltedGeom(it);
+    const fp = def.footprint(it);
+    const yc = WALL + g.depth / 2;
+    const topZ = FLOOR + g.H;
+    const zb = topZ - g.wedgeDepth;
+    const tw = g.plateWedge.top / 2;
+    const bw = g.plateWedge.bottom / 2;
+    const half = (z: number) => bw + ((z - zb) / g.wedgeDepth) * (tw - bw);
+    const x = WALL + 1;
+    // Under the wedge bottom: the lining, then the pocket below it.
+    expect(material(s, x, yc, zb - WALL / 2)).toBeCloseTo(FULL, 9);
+    expect(material(s, x, yc, zb - WALL - 0.5)).toBeLessThan(1e-9);
+    // The wedge itself cuts through the whole back: outer wall, lined pocket, leaning plate.
+    const xPlate = WALL + g.back + (g.wedgeDepth - 1) * g.tan - 0.3; // just inside the leaning plate at zb + 1
+    for (const xx of [0.5, x, xPlate]) expect(material(s, xx, yc, zb + 1)).toBeLessThan(1e-9);
+    // Beside the wedge: the slanted lining, then the pocket.
+    const z = topZ - 5;
+    expect(material(s, x, yc + half(z) + WALL / 2, z)).toBeCloseTo(FULL, 9);
+    expect(material(s, x, yc + half(z) + WALL + 0.5, z)).toBeLessThan(1e-9);
+    expect(material(s, x, yc - half(z) - WALL / 2, z)).toBeCloseTo(FULL, 9);
+    expect(material(s, x, yc - half(z) - WALL - 0.5, z)).toBeLessThan(1e-9);
+    // Away from the wedge the pocket still runs through both side walls.
+    for (const y of [0.1, fp.depth - 0.1]) expect(material(s, x, y, FLOOR + g.H / 2)).toBeLessThan(1e-9);
+    // The lining costs some of the saving: still positive, smaller than without wedges.
+    const savedOn = k.volume(def.build(item({ hollowBack: false }), k)) - k.volume(s);
+    const savedOff = k.volume(def.build(item({ hollowBack: false, wedgePlates: false }), k)) - k.volume(def.build(item({ wedgePlates: false }), k));
+    expect(savedOn).toBeGreaterThan(0);
+    expect(savedOn).toBeLessThan(savedOff);
+  });
+
   it('with a recessed base the pocket starts above the recess ring', () => {
     // Recess 2.15 deep; the pocket bottom is at 2.15 + 0.4, so the side-wall hole never opens into the ring.
     const s = build(item({ stackTop: 'lip', stackBottom: 'recess', wedgePlates: false }));

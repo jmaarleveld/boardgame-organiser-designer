@@ -46,7 +46,11 @@
  * leaning plate `wall` thick (perpendicular) behind slot 0, the vertical outer
  * back wall (`wall`) and a pocket between them, from floorZ up to a flat roof
  * `wall` thick under the top face, running through both side walls (see
- * `pocketProfile`; skipped when it would be thinner than 1 mm).
+ * `pocketProfile`; skipped when it would be thinner than 1 mm). With
+ * `wedgePlates` the pocket keeps a `wall`-thick lining around the back wedge
+ * (both slanted sides and the bottom, see `wedgeLining`), so the wedge cuts
+ * through the whole back without opening into the pocket: the pocket splits
+ * into a left and a right half, bridged by a flat ceiling under the wedge.
  *
  * Wedges (group "Wedge", sizes 0 = auto: top 60 % of the span cut across,
  * bottom 40 % of the top, depth 60 % of H clamped to H − T·sin θ − 1):
@@ -243,8 +247,9 @@ function pocketBottom(floorZ: number, s: Stacking): number {
 /**
  * Plate wedge of cell i: a trapezoid in the YZ plane centred on the lane,
  * extruded along X over the plate behind slot i (cell 0: from the outer back
- * face through the back wall, the pocket and the leaning plate, and through
- * the back lip; cell i > 0: the tilted divider between slot i − 1 and slot i),
+ * face through the back wall, the pocket roof and the leaning plate, and
+ * through the back lip, the pocket keeping a lining around it, see
+ * `wedgeLining`; cell i > 0: the tilted divider between slot i − 1 and slot i),
  * from x_back_i(H) − pitch (i > 0) or 0 (i = 0) to x_back_i(zBot) + EPS.
  * The neighbouring slots are air; the box is clipped to the slab between
  * slot i − 1's back face and slot i's front face (slot i's local
@@ -272,6 +277,42 @@ function plateWedgeCutter(kernel: GeometryKernel, f: CellFrame, g: Geom, pitch: 
   const lo = f.outer.left ? -big : -pitch * g.cos;
   const slab = tiltedBox(kernel, f, g, [g.T - lo, f.depth + 2, 2 * big], [lo, -1, -big]);
   return kernel.intersection([prism, slab]);
+}
+
+/**
+ * The plate wedge of cell 0 grown by `wall` (a true offset: each slanted side
+ * shifted outward by `wall` perpendicular to it, the bottom edge down by
+ * `wall`, the top at topZ + EPS), extruded along X over the whole pocket
+ * (−EPS to x_back_0(floor) + 1). Subtracted from the pocket cutter, so a
+ * `wall`-thick lining stays around the wedge cut and nothing looks into the
+ * pocket; the pocket splits into a left and a right half, each still open
+ * through its side wall, with a flat ceiling bridging the pocket under the
+ * wedge bottom.
+ */
+function wedgeLining(kernel: GeometryKernel, f: CellFrame, g: Geom, wall: number): Solid {
+  const tw = g.plateWedge.top / 2;
+  const bw = g.plateWedge.bottom / 2;
+  const zTop = f.topZ;
+  const zb = zTop - g.wedgeDepth;
+  // Right slanted side from (bw, zb) to (tw, zTop) relative to the centre; outward normal (dz, −dx) / len.
+  const dx = tw - bw;
+  const dz = zTop - zb;
+  const len = Math.hypot(dx, dz);
+  const nx = dz / len;
+  const nz = -dx / len;
+  // Half width of the offset side at height z.
+  const half = (z: number) => bw + wall * nx + (z - (zb + wall * nz)) * (dx / dz);
+  const zBot = zb - wall;
+  return wedgeCutter(kernel, {
+    across: 'x',
+    a0: 0,
+    t: wall + g.back + g.H * g.tan + 1,
+    c: f.y + f.depth / 2,
+    size: { top: 2 * half(zTop), bottom: 2 * half(zBot) },
+    zTop,
+    zBot,
+    zCap: zTop + EPS,
+  });
 }
 
 /**
@@ -376,7 +417,10 @@ function spec(item: ResolvedItem): TiledBoxSpec {
       if (f.outer.right) out.push(frontCutter(kernel, f, g, L.width));
       if (f.outer.left && g.hollowBack) {
         const poly = pocketProfile(g, base.wall, f.floorZ, f.topZ, pocketBottom(f.floorZ, base.stacking));
-        if (poly) out.push(extrudeXZ(kernel, poly, -EPS, L.depth + EPS));
+        if (poly) {
+          const pocket = extrudeXZ(kernel, poly, -EPS, L.depth + EPS);
+          out.push(plates ? kernel.difference(pocket, [wedgeLining(kernel, f, g, base.wall)]) : pocket);
+        }
       }
       if (plates) out.push(plateWedgeCutter(kernel, f, g, pitch, L.width));
       if (sides) out.push(...sideWedgeCutters(kernel, f, g));
@@ -556,7 +600,7 @@ export const cardTrayTilted: BoxTypeDefinition = {
       kind: 'boolean',
       default: true,
       group: 'Dispenser',
-      help: 'A pocket in the solid back wedge, open through the side walls, to save material; its roof is a short bridge.',
+      help: 'A pocket in the solid back wedge, open through the side walls, to save material; its roof is a short bridge. With wedges in the plates the pocket is sealed around the back wedge by a lining one wall thick.',
     },
     ...tilingParams('x'),
     {

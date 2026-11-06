@@ -383,7 +383,8 @@ stackHeight·sin θ − lipH, x from `wall + overhangClearance` for slot 0 (insi
 the footprint). `hollowBack` (default on) replaces the solid back wedge by a
 leaning plate `wall` thick behind slot 0, the outer back wall and a pocket
 between them (floorZ up to a roof `wall` thick under the top), open through
-both side walls; skipped when thinner than 1 mm. Wedges: `wedgePlates`
+both side walls; skipped when thinner than 1 mm; with `wedgePlates` the
+pocket keeps a `wall`-thick lining around the back wedge. Wedges: `wedgePlates`
 (default on) cuts a YZ trapezoid centred on the lane from the top of the back
 plate (through the back block and lip) and of every divider; `wedgeSides`
 (default off) cuts a trapezoid in the slot's tilted frame from both side walls

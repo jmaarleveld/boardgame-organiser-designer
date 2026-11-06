@@ -234,7 +234,13 @@ the back, the front deck is drawn from the front (+X). Params in group
   wall between them is `wall - (wall/2 + clearance)`, validated against
   `MIN_RECESS_WALL` (at the side walls the pocket hole runs into the recess
   ring along the pocket's length; the floor under the pocket stays). Bearing
-  areas are unchanged: the roof keeps the `back wall` strip solid.
+  areas are unchanged: the roof keeps the `back wall` strip solid. With
+  `wedgePlates` the pocket cutter is the pocket prism minus the back wedge
+  grown by `wall` (each slanted side offset outward perpendicular to it, the
+  bottom edge down, extruded over the whole pocket along X), so a `wall`-thick
+  lining seals the pocket around the wedge cut: the pocket splits into a left
+  and a right half, each still open through its side wall, with a flat
+  ceiling (a short bridge) under the wedge bottom.
 * **Wedges** (group "Wedge"), two toggles, sizes as in the upright tray
   (`wedgeTopWidth`, `wedgeBottomWidth`, `wedgeDepth`, 0 = auto: top 60 % of
   the span the wedge is cut across, bottom 40 % of the top, depth 60 % of H,
@@ -244,8 +250,8 @@ the back, the front deck is drawn from the front (+X). Params in group
   * `wedgePlates` (default true, "Wedges in the leaning plates"): a vertical
     trapezoid in the YZ plane centred on the lane (span = lane width
     cardWidth + 2c), cut from the top of the plate behind every slot: for
-    slot 0 through the outer back wall, the roof, the pocket and the leaning
-    plate and the back lip; for slot i > 0 the tilted divider. Extruded along
+    slot 0 through the outer back wall, the roof, the pocket lining and the
+    leaning plate and the back lip (never into the pocket itself); for slot i > 0 the tilted divider. Extruded along
     X from 0 (slot 0) or `x_back_i(H) - pitch` to `x_back_i(zBot) + EPS`,
     clipped to the slab between slot i - 1's back face and slot i's front face
     (the neighbouring slots are air), so it never reaches divider i, the side
