@@ -16,7 +16,7 @@ export function Palette() {
               type="button"
               className="palette-item"
               draggable
-              title="Click to add, or drag onto the top view"
+              title="Click to add, or drag into the view"
               onClick={() => addItem(t.id)}
               onDragStart={(e) => {
                 e.dataTransfer.setData(BOX_TYPE_MIME, t.id);

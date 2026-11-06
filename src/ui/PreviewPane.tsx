@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import type { MeshData } from '../geometry/types';
 import { useServices } from '../integration';
 import { useStore } from '../state/store';
@@ -55,98 +54,17 @@ export function PreviewPane() {
   );
 }
 
-type PreviewTab = 'item' | 'assembly';
-
 /**
- * Tabbed preview area: "Item" (3D preview of the selected item) and
- * "Assembly" (the whole game box). Without a selection the Assembly view is
- * shown and the Item tab is disabled.
+ * Preview area of the inspector: the 3D preview of the selected item. (The
+ * whole assembly is the centre‑pane 3D editor now, so there is no Assembly
+ * tab any more.)
  */
 export function PreviewTabs() {
-  const { AssemblyView } = useServices();
   const project = useStore((s) => s.project);
   const selectedId = useStore((s) => s.selectedId);
-  const [tab, setTab] = useState<PreviewTab>('item');
-  const [poppedOut, setPoppedOut] = useState(false);
   const hasItem = project.items.some((i) => i.id === selectedId);
-  const active: PreviewTab = hasItem ? tab : 'assembly';
-
-  return (
-    <div className="preview-tabs">
-      <div className="tabs" role="tablist" aria-label="3D preview">
-        <button
-          type="button"
-          role="tab"
-          id="preview-tab-item"
-          aria-selected={active === 'item'}
-          aria-controls="preview-panel"
-          className={active === 'item' ? 'active' : ''}
-          disabled={!hasItem}
-          title={hasItem ? '3D preview of the selected box' : 'Select a box to preview it'}
-          onClick={() => setTab('item')}
-        >
-          Item
-        </button>
-        <button
-          type="button"
-          role="tab"
-          id="preview-tab-assembly"
-          aria-selected={active === 'assembly'}
-          aria-controls="preview-panel"
-          className={active === 'assembly' ? 'active' : ''}
-          title="Every box inside the game box"
-          onClick={() => setTab('assembly')}
-        >
-          Assembly
-        </button>
-        {!hasItem && <span className="tab-hint muted">Select a box for its item preview</span>}
-      </div>
-      <div id="preview-panel" role="tabpanel" aria-labelledby={`preview-tab-${active}`}>
-        {active === 'item' ? (
-          <PreviewPane />
-        ) : !AssemblyView ? (
-          <div className="preview-placeholder">Assembly view unavailable</div>
-        ) : poppedOut ? (
-          <div className="preview-placeholder">
-            Shown in the pop-out view.{' '}
-            <button type="button" className="link" onClick={() => setPoppedOut(false)}>
-              Bring back
-            </button>
-          </div>
-        ) : (
-          <AssemblyView className="assembly-inline" onPopOut={() => setPoppedOut(true)} />
-        )}
-      </div>
-      {poppedOut && AssemblyView && <AssemblyModal onClose={() => setPoppedOut(false)} />}
-    </div>
-  );
-}
-
-/** Large fixed-position panel with the assembly view; Esc or × closes it. */
-function AssemblyModal({ onClose }: { onClose(): void }) {
-  const { AssemblyView } = useServices();
-  const name = useStore((s) => s.project.settings.name);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      // Capture phase on window: runs before the app's shortcut handler, which
-      // would otherwise also clear the selection.
-      e.stopPropagation();
-      onClose();
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [onClose]);
-  if (!AssemblyView) return null;
-  return createPortal(
-    <div className="assembly-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="assembly-modal" role="dialog" aria-modal="true" aria-label={`Assembly — ${name}`}>
-        <div className="assembly-modal-title">Assembly — {name}</div>
-        <AssemblyView className="assembly-large" onClose={onClose} />
-      </div>
-    </div>,
-    document.body,
-  );
+  if (!hasItem) return <div className="preview-placeholder muted">Select a box to preview it</div>;
+  return <PreviewPane />;
 }
 
 /** Export buttons for the selected item. */

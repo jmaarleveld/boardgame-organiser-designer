@@ -63,6 +63,13 @@ export interface AssemblySceneApi {
   pickItemAt(clientX: number, clientY: number): ItemPick | null;
   /** Game‑frame x/y where the cursor ray meets the horizontal plane at height z; null if it misses. */
   screenToPlane(clientX: number, clientY: number, z: number): { x: number; y: number } | null;
+  /** Game‑frame pick ray under the cursor (origin and unit direction). */
+  screenRay(clientX: number, clientY: number): { origin: Vec3; dir: Vec3 };
+  /**
+   * Canvas‑relative CSS pixel position of game‑frame point (x, y, z) (for HTML
+   * overlays); null when the point is behind the camera.
+   */
+  projectToCanvas(x: number, y: number, z: number): { x: number; y: number } | null;
   /** Recentre the camera target on game‑frame (x, y), keeping the view direction and zoom. */
   focusOn(x: number, y: number): void;
   /** The canvas element (for attaching editor pointer handlers). */
@@ -80,7 +87,8 @@ const SELECT_COLOR = 0x2563eb;
 const FOV = 35;
 
 export interface AssemblySceneOptions {
-  onPick(id: string): void;
+  /** Left click (no drag) on an item. Omit when the caller handles picking itself (the editor). */
+  onPick?(id: string): void;
   preset?: CameraPreset;
   orientation?: ViewOrientation;
 }
@@ -360,6 +368,22 @@ export function createAssemblyScene(host: HTMLDivElement, opts: AssemblySceneOpt
     return p ? { x: p[0], y: p[1] } : null;
   }
 
+  function screenRay(clientX: number, clientY: number): { origin: Vec3; dir: Vec3 } {
+    setRay(clientX, clientY);
+    const { origin: o, direction: d } = raycaster.ray;
+    return { origin: [o.x, o.y, o.z], dir: [d.x, d.y, d.z] };
+  }
+
+  const projV = new THREE.Vector3();
+  function projectToCanvas(x: number, y: number, z: number): { x: number; y: number } | null {
+    camera.updateMatrixWorld();
+    projV.set(x, y, z).project(camera);
+    if (projV.z > 1 || projV.z < -1) return null;
+    const w = dom.clientWidth;
+    const h = dom.clientHeight;
+    return { x: ((projV.x + 1) / 2) * w, y: ((1 - projV.y) / 2) * h };
+  }
+
   function focusOn(x: number, y: number) {
     const t = controls.target;
     const next = recenter([camera.position.x, camera.position.y, camera.position.z], [t.x, t.y, t.z], x, y);
@@ -380,7 +404,7 @@ export function createAssemblyScene(host: HTMLDivElement, opts: AssemblySceneOpt
     down = null;
     if (moved > 4) return;
     const hit = pickItemAt(e.clientX, e.clientY);
-    if (hit) opts.onPick(hit.id);
+    if (hit) opts.onPick?.(hit.id);
   };
   dom.addEventListener('pointerdown', onDown);
   dom.addEventListener('pointerup', onUp);
@@ -420,6 +444,8 @@ export function createAssemblyScene(host: HTMLDivElement, opts: AssemblySceneOpt
     getPreset: () => preset,
     pickItemAt,
     screenToPlane,
+    screenRay,
+    projectToCanvas,
     focusOn,
     resize(w, h) {
       renderer.setSize(w, h);

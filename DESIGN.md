@@ -24,9 +24,14 @@ BGG's XML API does not send CORS headers.
 ## 2. Units, axes and coordinate frames
 
 * All lengths are **millimetres**. All angles are degrees.
-* **Game box frame** (top view): origin is the inner top‑left corner of the game
-  box. `x` grows to the right (box *width*), `y` grows downward (box *depth*),
-  exactly like SVG. `z` is up (box *height*).
+* **Game box frame**: origin is an inner bottom corner of the game box. `x`
+  runs along the box *width*, `y` along the box *depth*, `z` is up (box
+  *height*); right‑handed, like the STL frame. **On screen (y‑up)**: the 3D
+  editor shows x to the right and y *up* the screen in the Top preset, i.e.
+  the origin is the front‑left corner and the `y = 0` edge is the one nearest
+  the viewer in the Front / Iso presets. Nothing is mirrored (a proper camera
+  cannot show x right *and* y down). The old 2D top view (SVG, temporary, see
+  §6) still draws y downward until it becomes the mini‑map (Phase 4).
 * **Stack order and gravity**: an item's elevation is not entered; it is
   derived. The order of `Project.items` is the stack order: each item rests on
   the highest effective surface (`top − engagement`, §4) of the *earlier*
@@ -35,7 +40,7 @@ BGG's XML API does not send CORS headers.
 * **Usable area**: the game box inner rectangle shrunk by the tolerance, centred:
   `usable.x0 = tol.x / 2`, `usable.width = box.width - tol.x` (same for y / depth).
   Tolerance is therefore the *total* slack that remains after tiling, per axis.
-* **Item placement**: `item.x, item.y` is the top‑left corner of the item's *outer*
+* **Item placement**: `item.x, item.y` is the minimum‑x, minimum‑y corner of the item's *outer*
   footprint in the game box frame. `rotation` is `0` or `90`; at `90` the
   footprint's width and depth are swapped. Rotation affects placement only —
   STL geometry is always generated unrotated.
@@ -123,10 +128,14 @@ those that meet that z (within `SUPPORT_TOL`; `supportersById`).
 `carry`, the item moves together with everything resting on it, directly or
 transitively (`carriedItemIds`); an item resting on several items (a bridge)
 is carried only when *all* its supporters move, otherwise it stays and
-re‑settles. Without `carry` (Alt+drag) only the item moves and what was on it
-drops to whatever is under it. The moved items go to the end of the stack
-order (keeping their relative order), so they land on top of whatever they
-now overlap. `moveItem(id, x, y)` is `moveStack` with `carry`.
+re‑settles; the moved items go to the end of the stack order (keeping their
+relative order), so they land on top of whatever they now overlap. Without
+`carry` (Alt+drag, "pull out") only the item moves; it and everything resting
+on it, directly or through any supporter (`stackedAboveIds`), go to the end of
+the order, but only the item changes position. So the items on it stay on it
+while they still overlap it and drop to whatever is under them once it slides
+out, and the pulled item climbs onto what it is pushed over (neighbours never
+jump onto it). `moveItem(id, x, y)` is `moveStack` with `carry`.
 `duplicateItemStacked` inserts the copy (same x/y) right after the source, so
 it rests on it; `reorderItem(id, toIndex)` changes the stack order. The cavity types share a *Stacking* parameter group (`common.ts`:
 `stackTop` `none|lip`, `stackBottom` `none|recess|plug`, `lipHeight` 2,
@@ -284,19 +293,42 @@ Three‑pane layout:
 1. **Left — palette & settings**: game box size (manual entry or BGG lookup),
    tolerance x/y, default wall/floor, grid snap; list of box types to add
    (click or drag into the view).
-2. **Centre — top view** (SVG): game box outline, usable area (tolerance
-   band hatched), placed items with their top‑view features, labels and
-   dimensions. Drag to move, `R` to rotate, `Delete` to remove, `Ctrl+D`
-   duplicate, `Ctrl+Shift+D` duplicate on top (stacked), `Ctrl+Z/Y` undo/redo.
-   Dragging moves an item with the stack on it; Alt+drag leaves the stack
-   behind; Shift disables snapping. Snapping to the grid, to the usable‑area
-   edges and to neighbouring item edges. Overlapping items, items outside the
-   usable area and items taller than the box are highlighted and listed in a
-   validation panel.
+2. **Centre — 3D editor** (`AssemblyView` with `editable`, three.js; y‑up,
+   see §2). Camera buttons Top (orthographic, straight down) / Front / Side /
+   Iso and Fit; right‑drag orbits (pans in Top), middle‑drag pans, the wheel
+   zooms. The left button edits:
+   * **Click** an item to select it, click empty space to deselect.
+   * **Left‑drag** moves the item: the pointer is projected onto the
+     horizontal plane at the height where the item was grabbed, keeping the
+     grab offset (in near‑horizontal views — Front / Side — onto the upright
+     plane through the grab point facing the camera instead; `src/model/drag.ts`).
+     The position snaps to the grid, the usable‑area edges and the edges of the
+     items that stay put (Shift: no snap; `snapPosition`), and the item settles
+     live, so it visibly climbs onto trays. Alt at drag start pulls the item
+     out from under its stack (`carry: false`, §4). One drag = one undo step
+     (`beginDrag` / `endDrag`). The 2D top view uses the same drag maths.
+   * **While dragging**, overlay labels show the distance from the item's
+     footprint to the nearest facing neighbour edge (items overlapping it in
+     height) or usable‑area wall on each side (`gapLabels`), plus the snap
+     guide lines and an x / y / z readout.
+   * **Palette drop**: a box type dropped onto the view is placed with its
+     centre at the item top or floor point under the pointer and appended to
+     the stack order, so it settles on top.
+   * **Keys** (when focus is not in a text field): arrows nudge by the grid
+     step (Shift: 10×) following the screen — ArrowUp increases y in the 3D
+     editor (decreases it in the 2D view); `R` rotate, `Delete` remove,
+     `Ctrl+D` duplicate, `Ctrl+Shift+D` duplicate on top (stacked),
+     `Ctrl+Z/Y` undo/redo, `Esc` deselect.
+   Overlapping items, items outside the usable area and items taller than the
+   box are tinted (§7) and listed in a validation panel. A temporary **2D**
+   button switches the centre pane to the old SVG top view (y down; same drag
+   rules; Space/middle‑drag pans, wheel zooms); Phase 4 turns it into a
+   mini‑map.
 3. **Right — inspector**: label, position, rotation, read‑only elevation
    ("Rests at z = …"), wall/floor override
    (checkbox "override project default" + value), generated parameter form,
    computed outer footprint, 3D preview of the selected item, export buttons.
+   (The whole assembly is the centre pane; there is no Assembly tab.)
 
 Status bar: remaining slack in x / y given the current layout (bounding box of
 items vs usable area), total item count, validation summary.
@@ -317,15 +349,17 @@ items vs usable area), total item count, validation summary.
   packs them with a `manifest.txt` into a zip.
 * `download.ts` — trigger a browser download for a Blob.
 * `src/preview/Preview3D.tsx` — three.js viewer for a `MeshData` (single item).
-* `src/preview/AssemblyView.tsx` — "Assembly" tab: the whole game box as a
+* `src/preview/AssemblyView.tsx` — the centre‑pane 3D editor (§6): the whole game box as a
   translucent shell with every item placed from the layout. One mesh per unique
   geometry (exporter's `geometryKey`) in a shared LRU cache; moves and rotations
   only update transforms (including the `z` elevation). Items whose top (incl.
   standing cards, `effectiveTop`) is above the box are tinted red,
   overlapping / intersecting / out‑of‑area items and stack‑fit errors orange,
-  floating or "may tip" stacked items light blue. Note: the scene root is mirrored in Y
-  (`scale(1,-1,1)`) so the view reads like the top view (x right, y down); this
-  mirrors chiral geometry, which is invisible for the current symmetric boxes.
+  floating or "may tip" stacked items light blue. The three.js world is the
+  game box frame itself (nothing mirrored, chiral geometry renders as it
+  prints); the camera presets are y‑up (§2, `assemblyCamera.ts`). The scene
+  API (`assemblyRenderer.ts`) offers picking (`pickItemAt`), pointer rays and
+  plane projection for dragging, and `projectToCanvas` for HTML overlays.
 * `src/geometry/scadKernel.ts` — a second `GeometryKernel` that records calls
   and emits OpenSCAD source; the exporter writes a `.scad` next to every `.stl`.
 

@@ -8,7 +8,7 @@ import { createEmptyProject } from '../model/types';
 import { getBoxType } from '../boxes/registry';
 import { newItemParams } from '../boxes/types';
 import type { Rect } from '../model/layout';
-import { carriedItemIds, elevationOf, rectInside, rectsOverlap, safeItemRect, settle, usableArea } from '../model/layout';
+import { carriedItemIds, elevationOf, rectInside, rectsOverlap, safeItemRect, settle, stackedAboveIds, usableArea } from '../model/layout';
 
 export const HISTORY_LIMIT = 100;
 
@@ -42,10 +42,14 @@ export interface AppState {
   moveItem(id: string, x: number, y: number): void;
   /**
    * Move an item by (dx, dy). With `carry`, everything resting on it
-   * (transitively; a bridge only when all its supporters move) moves along;
-   * without, items left behind drop to whatever is under them. The moved
-   * items go to the end of the stack order (keeping their relative order), so
-   * they land on top of whatever they now overlap.
+   * (transitively; a bridge only when all its supporters move) moves along,
+   * and the moved items go to the end of the stack order (keeping their
+   * relative order), so they land on top of whatever they now overlap.
+   * Without `carry` (pull-out) only the item moves; it goes to the end of
+   * the order just before everything resting on it (`stackedAboveIds`, which
+   * stays put), so what still overlaps it stays on it, what no longer does
+   * drops to whatever is under it, and it climbs onto what it is pushed over
+   * instead of pushing neighbours up.
    */
   moveStack(id: string, dx: number, dy: number, opts: { carry: boolean }): void;
   /** Move an item to position `toIndex` (clamped) of the stack order. */
@@ -268,12 +272,18 @@ export const useStore = create<AppState>()((set, get) => {
       commit((p) => {
         if (!p.items.some((i) => i.id === id)) return p;
         if (!(Number.isFinite(dx) && Number.isFinite(dy)) || (dx === 0 && dy === 0)) return p;
-        const ids = new Set(carry ? carriedItemIds(p.items, p.settings, id) : [id]);
+        // carry: the item and its stack move and go to the end of the order.
+        // Pull-out: only the item moves, but it goes to the end together with
+        // everything resting on it (which stays in place), so what still
+        // overlaps it stays on it and drops once it slides out, while
+        // neighbours it is pushed against do not climb onto it.
+        const ids = new Set(carry ? carriedItemIds(p.items, p.settings, id) : stackedAboveIds(p.items, p.settings, id));
         const rest: PlacedItem[] = [];
         const moved: PlacedItem[] = [];
         for (const i of p.items) {
-          if (ids.has(i.id)) moved.push({ ...i, x: round(i.x + dx), y: round(i.y + dy) });
-          else rest.push(i);
+          if (!ids.has(i.id)) rest.push(i);
+          else if (carry || i.id === id) moved.push({ ...i, x: round(i.x + dx), y: round(i.y + dy) });
+          else moved.push(i);
         }
         return withItems(p, [...rest, ...moved]);
       }),

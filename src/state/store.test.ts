@@ -230,19 +230,49 @@ describe('store', () => {
     });
 
     it('without carry pulls the item out; what was on it drops and re-settles', () => {
-      const { a, b, c } = tower();
+      const { a, b, c, d } = tower();
       st().moveStack(a, 0, 100, { carry: false });
-      expect(items().map((i) => i.id).slice(-1)).toEqual([a]);
+      // The pulled item goes to the end, just before what rested on it.
+      expect(items().map((i) => i.id)).toEqual([d, a, b, c]);
       expect(byId(a)).toMatchObject({ x: 30, y: 140 });
       expect('z' in byId(a)).toBe(false);
       expect('z' in byId(b)).toBe(false);
       expect(byId(c)).toMatchObject({ x: 30, y: 40, z: 10 });
-      // Pulled only half way out it ends on top of what stayed.
-      st().undo();
+    });
+
+    it('without carry, items still overlapping the pulled item stay on it until it slides out', () => {
+      const { a, b, c, d } = tower();
+      st().beginDrag();
+      // Half way out (a is 40 wide): b and c still rest on a and do not move.
       st().moveStack(a, 20, 0, { carry: false });
-      expect(byId(b).z).toBeUndefined();
+      expect(items().map((i) => i.id)).toEqual([d, a, b, c]);
+      expect('z' in byId(a)).toBe(false);
+      expect(byId(b)).toMatchObject({ x: 30, z: 10 });
+      expect(byId(c)).toMatchObject({ x: 30, z: 20 });
+      // All the way out: they drop to the floor.
+      st().moveStack(a, 30, 0, { carry: false });
+      expect('z' in byId(b)).toBe(false);
       expect(byId(c).z).toBe(10);
-      expect(byId(a).z).toBe(20);
+      st().endDrag();
+      expect(st().past.length).toBeGreaterThan(0);
+    });
+
+    it('without carry, a neighbour the pulled item is pushed against does not climb onto it', () => {
+      const { a, b, d } = tower();
+      // a (x 30..70) is pulled right over d (x 180..220): a climbs onto d, d stays on the floor.
+      st().moveStack(a, 160, 0, { carry: false });
+      expect('z' in byId(d)).toBe(false);
+      expect(byId(a)).toMatchObject({ x: 190, z: 10 });
+      expect('z' in byId(b)).toBe(false);
+    });
+
+    it('without carry, a bridge resting on the pulled item and a neighbour stays put', () => {
+      const l = st().addItem('fake', { x: 50, y: 50 }); // 30..70
+      const r = st().addItem('fake', { x: 90, y: 50 }); // 70..110
+      const x = st().addItem('fake', { x: 70, y: 50 }); // 50..90, on both
+      st().moveStack(l, -10, 0, { carry: false });
+      expect(items().map((i) => i.id)).toEqual([r, l, x]);
+      expect(byId(x)).toMatchObject({ x: 50, z: 10 });
     });
 
     it('a bridge stays (and re-settles) when one of its supporters stays behind', () => {

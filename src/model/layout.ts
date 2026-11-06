@@ -361,6 +361,23 @@ export function carriedItemIds(items: PlacedItem[], settings: ProjectSettings, i
   return items.filter((i) => set.has(i.id)).map((i) => i.id);
 }
 
+/**
+ * For settled items: `id` plus every item resting on it directly or
+ * transitively through *any* supporter (unlike `carriedItemIds`, a bridge is
+ * included when one of its supporters is). Array (stack) order; [] for
+ * unknown ids.
+ */
+export function stackedAboveIds(items: PlacedItem[], settings: ProjectSettings, id: string): string[] {
+  const idx = items.findIndex((i) => i.id === id);
+  if (idx < 0) return [];
+  const supporters = supportersById(items, settings);
+  const set = new Set([id]);
+  for (let k = idx + 1; k < items.length; k++) {
+    if ((supporters.get(items[k].id) ?? []).some((s) => set.has(s))) set.add(items[k].id);
+  }
+  return items.filter((i) => set.has(i.id)).map((i) => i.id);
+}
+
 export function itemsOutsideUsable(items: PlacedItem[], settings: ProjectSettings): string[] {
   const usable = usableArea(settings);
   return items.filter((i) => !rectInside(safeItemRect(i, settings, items), usable)).map((i) => i.id);

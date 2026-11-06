@@ -81,4 +81,9 @@ export interface AssemblyViewProps {
   onPopOut?(): void;
   /** Shows a close button that calls this (used by the pop‑out panel). */
   onClose?(): void;
+  /**
+   * The main 3D editor: left‑drag moves items, click selects, palette drops
+   * add items, live distance labels while dragging.
+   */
+  editable?: boolean;
 }

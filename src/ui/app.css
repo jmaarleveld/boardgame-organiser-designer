@@ -224,3 +224,7 @@ input:disabled { background: #f1f2f4; color: var(--muted); }
 .bgg-dims { display: block; font-size: 11px; color: var(--muted); }
 .bgg-note { font-size: 11px; }
 .kernel-banner { flex-basis: 100%; padding: 4px 8px; border-radius: 4px; background: #fde8e8; color: var(--error); display: flex; gap: 8px; align-items: center; }
+
+/* Temporary 2D/3D toggle in the centre pane (Phase 4 turns the 2D view into a mini-map). */
+.view-toggle { position: absolute; top: 8px; right: 8px; z-index: 2; min-width: 34px; padding: 3px 7px; }
+.centre .topview .view-controls { right: 50px; }

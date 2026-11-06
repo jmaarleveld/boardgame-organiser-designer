@@ -6,7 +6,9 @@ import type { TopViewFeature } from '../boxes/types';
 import { resolveItem } from '../model/resolve';
 import type { PlacedItem, ProjectSettings } from '../model/types';
 import type { ItemRect, LayoutSummary, Rect, SnapGuide } from '../model/layout';
-import { boundingBox, carriedItemIds, errorItemIds, safeItemRect, snapPosition, usableArea, warningItemIds } from '../model/layout';
+import { boundingBox, errorItemIds, safeItemRect, usableArea, warningItemIds } from '../model/layout';
+import type { DragSession } from '../model/drag';
+import { dragDelta, dragStep, startDragSession } from '../model/drag';
 import { BOX_TYPE_MIME } from './dnd';
 
 /** View = centre (mm) + scale (mm per screen px). viewBox is derived from the element size. */
@@ -22,15 +24,10 @@ interface Size {
 }
 
 interface DragState {
-  id: string;
   pointerId: number;
   startClient: { x: number; y: number };
-  startMm: { x: number; y: number };
-  itemStart: { x: number; y: number };
-  size: { width: number; depth: number };
-  others: Rect[];
-  /** Move the items stacked on it along (false: Alt held at drag start — pull it out from under its stack). */
-  carry: boolean;
+  /** Shared drag maths (grab offset, snap targets, carry flag). */
+  session: DragSession;
   moved: boolean;
 }
 
@@ -204,26 +201,15 @@ export function TopView({ summary }: { summary: LayoutSummary }) {
     if (e.button === 0) select(null);
   };
 
-  const onItemPointerDown = (e: ReactPointerEvent, item: PlacedItem, idx: number) => {
+  const onItemPointerDown = (e: ReactPointerEvent, item: PlacedItem) => {
     if (e.button === 1 || (e.button === 0 && spaceDown)) return; // let it bubble to pan
     if (e.button !== 0) return;
     e.stopPropagation();
     select(item.id);
-    const r = rects[idx];
-    const carry = !e.altKey;
-    // Snap against everything that stays put.
-    const moving = new Set(carry ? carriedItemIds(items, settings, item.id) : [item.id]);
-    dragRef.current = {
-      id: item.id,
-      pointerId: e.pointerId,
-      startClient: { x: e.clientX, y: e.clientY },
-      startMm: toMm(e.clientX, e.clientY),
-      itemStart: { x: item.x, y: item.y },
-      size: { width: r.width, depth: r.depth },
-      others: rects.filter((_, i) => !moving.has(items[i].id)),
-      carry,
-      moved: false,
-    };
+    // Alt at drag start: pull it out from under its stack.
+    const session = startDragSession(items, settings, item.id, toMm(e.clientX, e.clientY), !e.altKey);
+    if (!session) return;
+    dragRef.current = { pointerId: e.pointerId, startClient: { x: e.clientX, y: e.clientY }, session, moved: false };
     svgRef.current?.setPointerCapture(e.pointerId);
   };
 
@@ -244,28 +230,15 @@ export function TopView({ summary }: { summary: LayoutSummary }) {
       d.moved = true;
       beginDrag();
       setFrozenView(viewRef.current);
-      setDraggingId(d.id);
+      setDraggingId(d.session.id);
     }
-    const p = toMm(e.clientX, e.clientY);
-    const proposed = { x: d.itemStart.x + p.x - d.startMm.x, y: d.itemStart.y + p.y - d.startMm.y };
-    let x: number;
-    let y: number;
-    if (e.shiftKey) {
-      x = Math.round(proposed.x * 10) / 10;
-      y = Math.round(proposed.y * 10) / 10;
-      setGuides([]);
-    } else {
-      const threshold = Math.min(10, Math.max(0.25, SNAP_PX * viewRef.current.m));
-      const s = snapPosition(d.size, proposed, d.others, usable, settings.gridSnap, threshold);
-      x = s.snapX ? s.x : Math.round(s.x * 10) / 10;
-      y = s.snapY ? s.y : Math.round(s.y * 10) / 10;
-      setGuides(s.guides);
-    }
-    // Never let an item leave the game box entirely: keep at least half of it inside.
-    x = Math.min(Math.max(x, -d.size.width / 2), settings.box.width - d.size.width / 2);
-    y = Math.min(Math.max(y, -d.size.depth / 2), settings.box.depth - d.size.depth / 2);
-    const cur = useStore.getState().project.items.find((i) => i.id === d.id);
-    if (cur) moveStack(d.id, Math.round((x - cur.x) * 1000) / 1000, Math.round((y - cur.y) * 1000) / 1000, { carry: d.carry });
+    const threshold = Math.min(10, Math.max(0.25, SNAP_PX * viewRef.current.m));
+    const step = dragStep(d.session, toMm(e.clientX, e.clientY), settings, { snap: !e.shiftKey, threshold });
+    setGuides(step.guides);
+    const cur = useStore.getState().project.items.find((i) => i.id === d.session.id);
+    if (!cur) return;
+    const { dx, dy } = dragDelta(cur, step);
+    moveStack(d.session.id, dx, dy, { carry: d.session.carry });
   };
 
   const finishPointer = (e: ReactPointerEvent<SVGSVGElement>) => {
@@ -378,7 +351,7 @@ export function TopView({ summary }: { summary: LayoutSummary }) {
               error={errors.has(item.id)}
               warning={warnings.has(item.id)}
               dragging={item.id === draggingId}
-              onPointerDown={(e) => onItemPointerDown(e, item, idx)}
+              onPointerDown={(e) => onItemPointerDown(e, item)}
               onFocus={() => select(item.id)}
             />
           );
