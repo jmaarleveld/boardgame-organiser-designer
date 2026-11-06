@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "settings": {
+    "name": "Containers demo",
+    "box": { "width": 300, "depth": 300, "height": 100 },
+    "tolerance": { "x": 2, "y": 2 },
+    "defaults": { "wall": 1.6, "floor": 1.2 },
+    "gridSnap": 1
+  },
+  "items": [
+    {
+      "id": "it-flat",
+      "type": "item-tray",
+      "label": "Item tray 3 x 2, flat floor",
+      "x": 1,
+      "y": 1,
+      "rotation": 0,
+      "params": { "columns": 3, "rows": 2, "floorShape": "flat" }
+    },
+    {
+      "id": "it-scoop",
+      "type": "item-tray",
+      "label": "Item tray 2 x 1, scoop floor (long sides)",
+      "x": 132,
+      "y": 1,
+      "rotation": 0,
+      "params": { "columns": 2, "rows": 1, "floorShape": "scoop", "scoopSides": "long", "scoopRadius": 10 }
+    },
+    {
+      "id": "ct-flat",
+      "type": "card-tray-flat",
+      "label": "Card tray flat, 2 columns, finger gaps on the sides into the floor",
+      "x": 1,
+      "y": 72,
+      "rotation": 0,
+      "params": { "columns": 2, "gapSides": "sides", "gapWidth": 25, "gapFloorDepth": 2 }
+    },
+    {
+      "id": "ct-upright",
+      "type": "card-tray-upright",
+      "label": "Card tray upright, 3 columns, wedges in the long walls",
+      "x": 142,
+      "y": 72,
+      "rotation": 0,
+      "params": { "columns": 3 }
+    },
+    {
+      "id": "ct-tilted",
+      "type": "card-tray-tilted",
+      "label": "Card tray tilted dispenser, 2 rows, 15 degrees, open front at +X",
+      "x": 246,
+      "y": 1,
+      "rotation": 0,
+      "params": { "rows": 2, "tiltAngle": 15 }
+    }
+  ]
+}
