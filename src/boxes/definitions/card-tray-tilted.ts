@@ -17,8 +17,10 @@
  *   H            = (cardHeight − exposedHeight)·cos θ
  *   s            = T / cos θ                     slot width, horizontal
  *   pitchX       = s + t / cos θ                 slot to slot along X
- *   x_back_i(z)  = wall + i·pitchX + (H − z)·tan θ   back face of slot i
- *   cell width   = H·tan θ + s                   axis aligned (> pitchX: the
+ *   overhang     = exposedHeight·sin θ           how far the exposed cards lean back
+ *   back         = overhang + overhangClearance  extra back wall at the top
+ *   x_back_i(z)  = wall + back + i·pitchX + (H − z)·tan θ   back face of slot i
+ *   cell width   = back + H·tan θ + s            axis aligned (> pitchX: the
  *                                                bounding boxes overlap, the slots do not)
  *   outer width  = 2·wall + (n − 1)·pitchX + cell width
  *
@@ -26,22 +28,14 @@
  * goes towards −X) with its lowest corner at (x_back_i(0), y, floorZ): the
  * slot floor is tilted too, the cards stand on it with their bottom edge
  * against the back face. Between slot i and slot i + 1 stands a tilted
- * divider, t thick perpendicular to the cards (t / cos θ horizontally). The
- * back wall is `wall` thick at the wall top and thicker below. Slot 0 is not
- * clipped above the wall top, so with a stacking lip and a steep angle it
- * notches the back lip where the cards lean over it (otherwise the cards
- * would rest on the lip).
- *
- * `dividerHeight` (0 = full height) lowers every tilted divider: the material
- * between slot i's front face and slot i + 1's back face above
- * floorZ + dividerHeight is cut (clipped to the inner lane, so the outer walls
- * and the lip are never touched). Trade‑off: with full dividers every deck
- * leans on its own divider and is separated from its neighbours, but only the
- * top `exposedHeight` of each deck is reachable; lowered to about
- * `frontHeight` the tray becomes a terraced display where each deck leans on
- * the deck behind it (more of every card visible and easier to grab, but
- * pulling a back card drags on the deck in front, and the decks are no longer
- * held apart above the divider).
+ * divider, t thick perpendicular to the cards (t / cos θ horizontally),
+ * always full height. The back wall is `wall + back` thick at the wall top
+ * and thicker below, so the exposed cards of slot 0, leaning back by
+ * `overhang` above the top, stay `overhangClearance` inside the footprint
+ * (the cards of slot i > 0 lean over slot i − 1, inside the part anyway).
+ * Slot 0 is not clipped above the wall top, so with a stacking lip, a steep
+ * angle and a small `back` it may notch the back lip where the cards lean
+ * over it (otherwise the cards would rest on the lip).
  *
  * Front opening (last cell only): everything in front of slot n − 1's front
  * face plane above floorZ + frontHeight is removed, within the lane's Y range
@@ -67,7 +61,6 @@ import {
 } from './common';
 import {
   cellFrames,
-  dividerHeightParam,
   tiledBaseFeatures,
   tiledBearingAreas,
   tiledBuild,
@@ -91,6 +84,7 @@ export function tiltedGeom(item: ResolvedItem) {
   const tilt = num(item, 'tiltAngle', 15);
   const exposed = num(item, 'exposedHeight', 20);
   const frontHeight = num(item, 'frontHeight', 20);
+  const overhangClearance = num(item, 'overhangClearance', 2);
   const th = (tilt * Math.PI) / 180;
   const cos = Math.cos(th);
   const sin = Math.sin(th);
@@ -99,6 +93,8 @@ export function tiltedGeom(item: ResolvedItem) {
   const T = cards.stackHeight + c;
   const H = (cards.cardHeight - exposed) * cos;
   const s = T / cos;
+  const overhang = exposed * sin;
+  const back = overhang + overhangClearance;
   return {
     cards,
     tilt,
@@ -111,7 +107,10 @@ export function tiltedGeom(item: ResolvedItem) {
     T,
     H,
     s,
-    width: H * tan + s,
+    overhang,
+    overhangClearance,
+    back,
+    width: back + H * tan + s,
     depth: cards.cardWidth + 2 * c,
   };
 }
@@ -132,11 +131,11 @@ function cutX(f: CellFrame, g: Geom): number {
 /**
  * A box in the slot's local frame (x across the cards, from the slot's back
  * face; z along the cards), rotated by −θ about Y and placed with the local
- * origin at the slot's lowest back corner (x_back(0), y, floorZ).
+ * origin at the slot's lowest back corner (x_back(0) = f.x + back + H·tan θ, y, floorZ).
  */
 function tiltedBox(kernel: GeometryKernel, f: CellFrame, g: Geom, size: [number, number, number], at: [number, number, number]): Solid {
   const local = kernel.box(size[0], size[1], size[2], at);
-  return kernel.translate(kernel.rotate(local, [0, -g.tilt, 0]), [f.x + g.H * g.tan, f.y, f.floorZ]);
+  return kernel.translate(kernel.rotate(local, [0, -g.tilt, 0]), [f.x + g.back + g.H * g.tan, f.y, f.floorZ]);
 }
 
 /** The tilted slot. */
@@ -160,22 +159,12 @@ function frontCutter(kernel: GeometryKernel, f: CellFrame, g: Geom, outerW: numb
 }
 
 /**
- * Lowered divider behind slot i + 1 (cut by cell i): the slab between slot
- * i's front face and slot i + 1's back face (local x ∈ [T, T + t], EPS more
- * on both sides into the slots), above floorZ + dividerHeight, clipped to
- * the inner lane between the two cells so it cannot touch an outer wall or
- * the lip.
+ * True when the tilted slot reaches into the back lip ring (outer half of the
+ * back wall): its back face at the lip top, wall + back − lipH·tan θ, lies
+ * below wall / 2.
  */
-function lowerDividerCutter(kernel: GeometryKernel, f: CellFrame, g: Geom, t: number, pitch: number, dividerTopZ: number): Solid {
-  const big = f.height + f.lipH + g.T + 10;
-  const slab = tiltedBox(kernel, f, g, [t + 2 * EPS, f.depth + 2, 2 * big], [g.T - EPS, -1, -big]);
-  const clip = kernel.box(pitch + f.width, f.depth, f.topZ + EPS - dividerTopZ, [f.x, f.y, dividerTopZ]);
-  return kernel.intersection([slab, clip]);
-}
-
-/** True when the tilted slot reaches into the back lip ring (outer half of the back wall). */
 function notchesBackLip(f: CellFrame, g: Geom, wall: number): boolean {
-  return f.lipH > 0 && f.lipH * g.tan > wall / 2;
+  return f.lipH > 0 && f.lipH * g.tan - g.back > wall / 2;
 }
 
 /** r minus cut, as up to four non‑overlapping rects. */
@@ -194,15 +183,11 @@ function subtractRect<R extends LocalRect>(r: R, cut: LocalRect): R[] {
   return out.filter((p) => p.width > 1e-9 && p.depth > 1e-9);
 }
 
-/** Tilted divider height above the floor actually used: 0 (full) unless 0 < dividerHeight < H. */
-function loweredTo(item: ResolvedItem, g: Geom): number {
-  const dh = num(item, 'dividerHeight');
-  return dh > 0 && dh < g.H ? dh : 0;
-}
-
 /**
- * Tiling spec: one cell = one tilted slot, (H·tan θ + s) (X) × cardWidth + 2c
- * (Y) × H (Z), stepped along X (columns) with pitch s + t / cos θ. The
+ * Tiling spec: one cell = one tilted slot plus the extra back wall,
+ * (back + H·tan θ + s) (X) × cardWidth + 2c (Y) × H (Z), stepped along X
+ * (columns) with pitch s + t / cos θ. Only cell 0's `back` strip is really
+ * solid at the top; in the other cells it overlaps the previous slot. The
  * dividers are tilted (`straightDividers: false`): this type cuts, draws and
  * reports them itself.
  */
@@ -216,21 +201,18 @@ function spec(item: ResolvedItem): TiledBoxSpec {
     wall: item.wall,
     floor: item.floor,
     stacking: stacking(item),
-    dividerHeight: num(item, 'dividerHeight'),
     straightDividers: false,
   };
   const L = tiledLayout({ ...base, cellCutters: () => [], cellDraw: () => [] });
-  const low = loweredTo(item, g);
   return {
     ...base,
     cellCutters(kernel, f) {
       const out = [slotCutter(kernel, f, g)];
       if (f.outer.right) out.push(frontCutter(kernel, f, g, L.width));
-      else if (low > 0) out.push(lowerDividerCutter(kernel, f, g, tiling.divider, pitch, f.floorZ + low));
       return out;
     },
     cellDraw(f) {
-      const xTop = f.x; // x_back_i(H): the slot's back face at the wall top
+      const xTop = f.x + g.back; // x_back_i(H): the slot's back face at the wall top
       if (!f.outer.right) {
         return [
           { kind: 'rect', role: 'cavity', x: xTop, y: f.y, w: g.s, h: f.depth },
@@ -252,37 +234,29 @@ function spec(item: ResolvedItem): TiledBoxSpec {
 /**
  * Bearing areas: the framework's outer ring minus the front opening of the
  * last cell, plus the cut‑down front as a 'low' shelf at floorZ + frontHeight,
- * plus every tilted divider's top (x from slot i's front face to slot
- * i + 1's back face at that height: 'bearing' at the wall top, 'low' at
- * floorZ + dividerHeight when lowered); where slot 0 notches the back lip,
- * that lip piece becomes 'low' too (solid, carries nothing).
+ * plus every tilted divider's top at the wall top (x from slot i's front
+ * face to slot i + 1's back face) and the extra back wall strip
+ * (wall … wall + back) at the wall top; where slot 0 notches the back lip,
+ * that lip piece becomes 'low' (solid, carries nothing).
  */
 function bearingAreas(item: ResolvedItem): BearingArea[] {
   const sp = spec(item);
   const g = tiltedGeom(item);
   const L = tiledLayout(sp);
-  const low = loweredTo(item, g);
   let areas = tiledBearingAreas(sp);
   const extra: BearingArea[] = [];
   for (const f of cellFrames(sp)) {
+    if (f.outer.left && g.back > 1e-9) {
+      extra.push({ x: f.x, y: f.y, width: g.back, depth: f.depth, height: f.topZ, role: 'bearing', name: 'back wall' });
+    }
     if (f.outer.right) {
       const x0 = cutX(f, g);
       const front = { x: x0, y: f.y, width: L.width - x0, depth: f.depth };
       areas = areas.flatMap((a) => subtractRect(a, front));
       extra.push({ ...front, height: f.floorZ + g.frontHeight, role: 'low', name: 'front wall' });
     } else {
-      // At height z the divider spans [x_back_i(z) + s, x_back_i(z) + pitch].
-      const z = low > 0 ? low : f.height;
-      const xb = f.x + (f.height - z) * g.tan;
-      extra.push({
-        x: xb + g.s,
-        y: f.y,
-        width: L.pitchX - g.s,
-        depth: f.depth,
-        height: f.floorZ + z,
-        role: low > 0 ? 'low' : 'bearing',
-        name: 'divider',
-      });
+      // At the wall top the divider spans [x_back_i(H) + s, x_back_i(H) + pitch].
+      extra.push({ x: f.x + g.back + g.s, y: f.y, width: L.pitchX - g.s, depth: f.depth, height: f.topZ, role: 'bearing', name: 'divider' });
     }
     if (f.outer.left && notchesBackLip(f, g, sp.wall)) {
       const back = { x: 0, y: f.y, width: sp.wall / 2, depth: f.depth };
@@ -310,10 +284,10 @@ function bearingAreas(item: ResolvedItem): BearingArea[] {
 /**
  * The cards above the outer top, per slot. The back card's back face leaves
  * the slot at x = x_back_i(H) (the wall top) and leans back to
- * x_back_i(H) − exposed·sin θ at its top edge (for slot 0 this may be < 0:
- * the cards overhang the back of the footprint; the layout maps and overlaps
- * keep‑out rects generically, so this is not clamped; slots i > 0 overhang
- * the previous slot, which is the same part). The front card's front face is
+ * x_back_i(H) − overhang at its top edge: for slot 0 that is
+ * wall + overhangClearance, inside the footprint (the back wall grows by
+ * `back` for that); slots i > 0 overhang the previous slot, which is the same
+ * part. The front card's front face is
  * at x_back_i(H) + s at the wall top. The highest card corner is the front
  * card's top: it stands stackHeight·sin θ higher on the tilted slot floor, so
  * the cards reach exposed·cos θ + stackHeight·sin θ above the wall top.
@@ -325,11 +299,10 @@ function keepOut(item: ResolvedItem): KeepOut[] {
   const L = tiledLayout(sp);
   const height = g.exposed * g.cos + g.cards.stackHeight * g.sin - L.lipH;
   if (!(height > 0)) return [];
-  const back = g.exposed * g.sin;
   return cellFrames(sp).map((f) => ({
-    x: f.x - back,
+    x: f.x + g.back - g.overhang,
     y: f.y,
-    width: g.s + back,
+    width: g.s + g.overhang,
     depth: f.depth,
     height,
     name: 'standing cards',
@@ -376,12 +349,18 @@ export const cardTrayTilted: BoxTypeDefinition = {
       group: 'Dispenser',
       help: 'Height of the front wall above the floor; above it the front is open so the cards can be pushed out.',
     },
-    ...tilingParams('x'),
     {
-      ...dividerHeightParam,
-      visibleIf: (p) => Number(p.columns) > 1,
-      help: 'Height of the tilted dividers above the floor; 0 = full inner height. About the front wall height gives a terraced display where each deck leans on the deck behind it.',
+      key: 'overhangClearance',
+      label: 'Clearance behind the cards',
+      kind: 'number',
+      default: 2,
+      min: 0,
+      step: 0.5,
+      unit: 'mm',
+      group: 'Dispenser',
+      help: 'Extra space kept behind the leaning cards, added to the back wall.',
     },
+    ...tilingParams('x'),
     ...stackingParams,
   ],
   newItemParams: { ...stackingNewItemParams },
@@ -401,6 +380,7 @@ export const cardTrayTilted: BoxTypeDefinition = {
     if (!(g.exposed < g.cards.cardHeight)) {
       problems.push(`Exposed height (${g.exposed} mm) must be smaller than the card height (${g.cards.cardHeight} mm).`);
     }
+    if (g.overhangClearance < 0) problems.push(`Clearance behind the cards must not be negative (is ${g.overhangClearance}).`);
     if (g.frontHeight < 0) problems.push(`Front wall height must not be negative (is ${g.frontHeight}).`);
     else if (g.H > 0 && !(g.frontHeight < g.H)) {
       problems.push(`Front wall height (${g.frontHeight} mm) must be lower than the inner height (${round(g.H)} mm).`);

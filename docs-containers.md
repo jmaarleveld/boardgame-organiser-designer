@@ -183,34 +183,34 @@ standing cards.
 A card display: slots stepped one behind the other along X, every stack
 leaning back by `tiltAngle` (default 15, 5 to 40) towards X = 0; cell 0 is at
 the back, the front deck is drawn from the front (+X). Params in group
-"Dispenser": `tiltAngle`, `exposedHeight` (20), `frontHeight` (20); group
-"Repeat": `columns`, `dividerThickness` t, `dividerHeight` (shown with more
-than one column). With T = stackHeight + c and θ = tiltAngle:
+"Dispenser": `tiltAngle`, `exposedHeight` (20), `frontHeight` (20),
+`overhangClearance` ("Clearance behind the cards", 2, ≥ 0); group "Repeat":
+`columns`, `dividerThickness` t. With T = stackHeight + c and θ = tiltAngle:
 
 * inner height `H = (cardHeight - exposedHeight)·cos θ`, slot width
-  `s = T / cos θ` (horizontal), pitch `s + t / cos θ`, back face of slot i
-  `x_back_i(z) = wall + i·pitch + (H - z)·tan θ`, cell width (axis-aligned
-  bounding box) `H·tan θ + s`, cell depth `cardWidth + 2c` (one lane, no
-  repeat along Y). Outer width `2·wall + (n - 1)·pitch + H·tan θ + s`; the
-  pitch is smaller than the cell width, the cells overlap in bounding box but
-  not in volume (`straightDividers: false`, explicit `pitchX`). Default
-  (15°): 52.89 x 68.7 mm for 1 column, 119.57 x 68.7 mm for 3 (pitch 33.34).
+  `s = T / cos θ` (horizontal), pitch `s + t / cos θ`. The exposed cards of
+  slot 0 lean back by `overhang = exposedHeight·sin θ` beyond the slot's back
+  face at the wall top; the part grows at the back by
+  `back = overhang + overhangClearance` so they never reach past the
+  footprint. Back face of slot i
+  `x_back_i(z) = wall + back + i·pitch + (H - z)·tan θ`, cell width
+  (axis-aligned bounding box) `back + H·tan θ + s` (the slot sits `back` into
+  its cell), cell depth `cardWidth + 2c` (one lane, no repeat along Y). Outer
+  width `2·wall + back + (n - 1)·pitch + H·tan θ + s`; the back wall is
+  `wall + back` thick at the wall top and thicker below. The pitch is smaller
+  than the cell width, the cells overlap in bounding box but not in volume
+  (`straightDividers: false`, explicit `pitchX`). Default (15°, back 7.18):
+  60.07 x 68.7 mm for 1 column, 126.74 x 68.7 mm for 3 (pitch 33.34).
 * Each slot is the box `T x (cardWidth + 2c) x L` rotated by -θ about Y
   with its lowest corner at `(x_back_i(0), y, floorZ)`, so its floor is tilted
-  too. It is not clipped above the wall top: with a stacking lip and a steep
-  tilt (`lipH·tan θ > wall/2`) slot 0 notches the back lip where the cards
+  too. It is not clipped above the wall top: with a stacking lip, a steep
+  tilt and a small `back` (`lipH·tan θ - back > wall/2`, e.g. 40° with
+  exposed height and clearance 0) slot 0 notches the back lip where the cards
   lean over it.
 * **Tilted dividers**: between slot i's front face and slot i + 1's back face
   stands a divider t thick perpendicular to the cards (t / cos θ
-  horizontally), full height by default. `dividerHeight` (0 = full, validated
-  0..H) lowers every tilted divider: cell i cuts the slab between those two
-  planes above `floorZ + dividerHeight`, clipped to the inner lane, so the
-  side walls, back and front wall and the lip are never touched. Trade-off:
-  full dividers keep every deck upright on its own divider and the decks apart,
-  but only the top `exposedHeight` of each is reachable; lowered to about
-  `frontHeight` the tray becomes a terraced display where each deck leans on
-  the deck behind it (more of each card visible and easier to grab, but pulling
-  a card drags on the deck in front and the decks are no longer held apart).
+  horizontally), always full height (no `dividerHeight`): every deck leans on
+  its own divider and the decks are held apart.
 * **Front opening** (last cell only): everything in front of slot n - 1's
   front-face plane above `floorZ + frontHeight` is removed, within the lane's
   Y range only (flush at the side walls), through the front outer wall and
@@ -222,25 +222,26 @@ than one column). With T = stackHeight + c and θ = tiltAngle:
   divider at the wall top (t / cos θ wide; the framework draws none with
   `straightDividers: false`), and for the last slot the `solid` shelf and the
   `notch` in the front wall.
+* Mini-map: the `back` strip is drawn as part of the solid (no rect).
 * `keepOut`: per slot, height `exposed·cos θ + stackHeight·sin θ - lipH` (the
   front card's top corner stands higher on the tilted floor), x from
-  `x_back_i(H) - exposed·sin θ` to `x_back_i(H) + s`. For slot 0 that may be
-  negative local x (cards overhang the back); slots i > 0 overhang the
-  previous slot of the same part. `keepOutViolations` checks the overhang;
-  `itemsOutsideUsable` ignores keep-outs.
+  `x_back_i(H) - overhang` to `x_back_i(H) + s`. For slot 0 that starts at
+  `wall + overhangClearance`, inside the footprint; slots i > 0 overhang the
+  previous slot of the same part.
 * **Bearing areas** wrap the framework's (outer ring only, no dividers with
   `straightDividers: false`): the last slot's front opening is subtracted, a
   `low` shelf at `frontHeight` is added, every tilted divider top is added
-  (`bearing` at the wall top, `low` at `floorZ + dividerHeight` when lowered;
-  x range as in the mini-map at that height), and the back lip piece slot 0
-  notches becomes `low`.
+  (`bearing` at the wall top, x range as in the mini-map), the `back` strip
+  (`wall … wall + back`) is added as `bearing` at the wall top, and the back
+  lip piece slot 0 notches (if any) becomes `low`.
 * **Chiral**: the cards always lean towards -X (-y at rotation 90), the mirror
   image is a different part; see DESIGN.md §4.1 and the assembly-view question
   in `docs-box-design-ideas.md`.
 * Validation: tilt range, `exposedHeight < cardHeight`, `0 <= frontHeight < H`,
-  divider thickness > 0 with more than one column, divider height in 0..H.
-* Earlier versions repeated lanes along Y (`rows`); an old `rows` value is now
-  ignored (one lane).
+  `overhangClearance >= 0`, divider thickness > 0 with more than one column.
+* An earlier version (2026-11-06) repeated lanes along Y (`rows`) and had a
+  `dividerHeight`; on load (`migrateLegacyItem`) `rows` ≥ 2 becomes `columns`
+  and both `rows` and `dividerHeight` are dropped.
 
 ### 4. `item-tray` — Item tray
 
@@ -290,11 +291,9 @@ cavity box). Every cell gets its own trough. No finger notches.
 
 * **Repeat axis per type.** All three card trays now repeat along X; the
   tilted tray as stepped slots one behind the other (built 2026-11-06, replacing
-  the lanes along Y). Open: should a lowered divider default to `frontHeight`
-  (terraced display) instead of full height?
+  the lanes along Y; its dividers are always full height and the part grows
+  at the back so the leaning cards stay inside the footprint).
 * **Wedges in the long walls vs. in the dividers.** Upright wedges are cut only
   in the two outer long walls; dividers (parallel to Y) have none.
 * **Scoop next to a lowered divider** can stand higher than the divider; there
   is no warning yet.
-* **`itemsOutsideUsable` ignores the tilted tray's overhanging cards** (keep-out
-  at negative local x); only `keepOutViolations` sees them.

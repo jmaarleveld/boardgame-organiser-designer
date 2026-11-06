@@ -166,7 +166,7 @@ a plate with optional corner stops (engagement = `stopHeight`).
 | `item-tray`    | Token tray, N×M cells, flat or scoop floor  | innerWidth/Depth/Height (one cell), columns, rows, dividerThickness (dividers always full height), floorShape (`flat`/`scoop`), scoopSides (`long`/`short`), scoopRise |
 | `card-tray-flat` | Card stacks lying flat, finger gaps into a raised floor (never through it), repeats along X | cardParams, columns, dividerThickness, gapWidth, gapFloorDepth, gapReach, gapSides (`sides`/`ends`/`both`) |
 | `card-tray-upright` | Card stacks standing, wedges in the long walls, repeats along X | cardParams, exposedHeight, columns, dividerThickness, dividerHeight, wedges, wedgeTopWidth, wedgeBottomWidth, wedgeDepth (sizes 0 = auto, relative to the cell) |
-| `card-tray-tilted` | Card display / dispenser: stacks leaning back, stepped one behind the other along X with tilted dividers, open front | cardParams, tiltAngle, exposedHeight, frontHeight, columns, dividerThickness, dividerHeight |
+| `card-tray-tilted` | Card display / dispenser: stacks leaning back, stepped one behind the other along X with tilted dividers, open front | cardParams, tiltAngle, exposedHeight, frontHeight, overhangClearance, columns, dividerThickness (tilted dividers always full height) |
 | `spacer`       | Solid filler block to take up slack         | width, depth, height |
 | `platform`     | Plate bridging trays to carry the next level | width, depth, thickness, cornerStops, stopSize, stopHeight, stopInset, locateItems |
 
@@ -186,7 +186,9 @@ wall / floor overrides: `tray` → `item-tray` 1 × 1 with the same inner size;
 `card-tray-upright` by its `orientation` (flat with `gapFloorDepth` 0, so the
 raised floor does not change the height). Finger notch params are dropped (no
 equivalent); omitted params are filled with the v1 defaults where those
-differ. `examples/stacking-demo.json` and the sample project were migrated
+differ. The same function migrates a `card-tray-tilted` of the earlier
+Y‑repeat version: `rows` ≥ 2 becomes `columns`, `rows` and `dividerHeight`
+are dropped (returned unchanged when neither is present). `examples/stacking-demo.json` and the sample project were migrated
 with the same function.
 
 ### 4.2 Build context (geometry that depends on other items)
@@ -363,17 +365,18 @@ the two outer long walls (cell X = stackHeight + c, Z = cardHeight −
 exposedHeight), toggled by `wedges`; sizes 0 = auto: top 60 % of the cell X
 span, bottom 40 % of the top, depth 60 % of the inner height; `keepOut` for the
 standing cards. `card-tray-tilted`
-(X, stepped): cell width = H·tan θ + s with s = T/cos θ and H = (cardHeight −
-exposedHeight)·cos θ, pitch s + t/cos θ (smaller than the cell: the framework
-allows that with `straightDividers: false`), so a tilted divider t thick stands
-between neighbouring slots; `dividerHeight` lowers those dividers (the type
-cuts them itself; about `frontHeight` gives a terraced display where each deck
-leans on the one behind); slot 0 may notch the back lip on steep tilts; only
-the front wall (last slot) gets the opening above `frontHeight`; its bearing
-areas wrap the framework's (front opening removed, a `low` shelf at
-`frontHeight`, tilted divider tops added); `keepOut` height is exposed·cos θ +
-stackHeight·sin θ − lipH and may start at negative local x (cards overhang the
-back; `keepOutViolations` checks that, `itemsOutsideUsable` ignores keep‑outs).
+(X, stepped): cell width = back + H·tan θ + s with s = T/cos θ, H =
+(cardHeight − exposedHeight)·cos θ and back = exposedHeight·sin θ +
+overhangClearance (the back wall grows so slot 0's leaning cards stay inside
+the footprint), pitch s + t/cos θ (smaller than the cell: the framework
+allows that with `straightDividers: false`), so a tilted divider t thick,
+always full height, stands between neighbouring slots; slot 0 may notch the
+back lip only on steep tilts with a small `back`; only the front wall (last
+slot) gets the opening above `frontHeight`; its bearing areas wrap the
+framework's (front opening removed, a `low` shelf at `frontHeight`, tilted
+divider tops and the back strip added); `keepOut` height is exposed·cos θ +
+stackHeight·sin θ − lipH, x from `wall + overhangClearance` for slot 0 (inside
+the footprint).
 See `docs-containers.md`.
 
 ## 5. Geometry kernel (`src/geometry/kernel.ts`)

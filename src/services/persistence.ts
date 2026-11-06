@@ -60,6 +60,10 @@ function clean(v: number): number {
  *   (card params, clearance, stack height and, upright, exposed height carry
  *   over; gaps and wedges get their defaults, except that a flat tray gets
  *   gapFloorDepth 0: a groove would raise the floor and the outer height).
+ * - `card-tray-tilted` of the earlier Y-repeat version (2026-11-06): `rows`
+ *   becomes `columns` (the slots now step along X) and `dividerHeight` is
+ *   dropped (the tilted dividers are always full height). See
+ *   `migrateTiltedTray`.
  *
  * Every other item is returned unchanged.
  */
@@ -109,9 +113,25 @@ export function migrateLegacyItem(item: PlacedItem): PlacedItem {
         params: upright ? without(params, V1_DROPPED) : { ...without(params, [...V1_DROPPED, 'exposedHeight']), gapFloorDepth: 0 },
       };
     }
+    case 'card-tray-tilted':
+      return migrateTiltedTray(item);
     default:
       return item;
   }
+}
+
+/**
+ * A tilted tray saved by the version that repeated the slots along Y: `rows`
+ * (≥ 2) becomes `columns`; `rows` and `dividerHeight` are dropped. Returns the
+ * item itself when there is nothing to migrate.
+ */
+function migrateTiltedTray(item: PlacedItem): PlacedItem {
+  const params = item.params;
+  if (!('rows' in params) && !('dividerHeight' in params)) return item;
+  const rows = Math.round(numParam(params, 'rows', 1));
+  const out = without(params, ['rows', 'dividerHeight']);
+  if (rows >= 2) out.columns = rows;
+  return { ...item, params: out };
 }
 
 export function validateProject(data: unknown): Project {

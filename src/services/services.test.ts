@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest';
 import JSZip from 'jszip';
 import { parseXml } from './xml';
 import { createBggClient, parseSearch, parseVersions } from './bgg';
-import { createPersistence, migrateLegacyItem } from './persistence';
+import { createPersistence, migrateLegacyItem, validateProject } from './persistence';
 import { registerAllBoxTypes } from '../boxes/index';
 import { placedFootprint } from '../model/resolve';
 import { createExporter } from './exporter';
@@ -149,6 +149,21 @@ describe('persistence', () => {
     // Already migrated items are left alone.
     const again = back.items.map(migrateLegacyItem);
     again.forEach((i, n) => expect(i).toBe(back.items[n]));
+  });
+
+  it('migrates the earlier tilted card tray: rows → columns, dividerHeight dropped', () => {
+    const tilted = (params: PlacedItem['params']): PlacedItem => ({ id: 'a', type: 'card-tray-tilted', label: 'a', x: 0, y: 0, rotation: 0, params });
+    expect(migrateLegacyItem(tilted({ rows: 3, tiltAngle: 20, dividerHeight: 30 })).params).toEqual({ columns: 3, tiltAngle: 20 });
+    expect(migrateLegacyItem(tilted({ rows: 1, columns: 2 })).params).toEqual({ columns: 2 });
+    expect(migrateLegacyItem(tilted({ dividerHeight: 0, stackTop: 'lip' })).params).toEqual({ stackTop: 'lip' });
+    const clean = tilted({ columns: 3, tiltAngle: 15 });
+    expect(migrateLegacyItem(clean)).toBe(clean);
+    // Other types keep their rows and dividerHeight.
+    const upright: PlacedItem = { ...tilted({ dividerHeight: 30, rows: 2 }), type: 'card-tray-upright' };
+    expect(migrateLegacyItem(upright)).toBe(upright);
+    // Through validateProject (the load path) too.
+    const proj = { version: 1, settings: createEmptyProject().settings, items: [tilted({ rows: 2, dividerHeight: 20 })] };
+    expect(validateProject(proj).items[0].params).toEqual({ columns: 2 });
   });
 });
 

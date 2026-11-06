@@ -117,7 +117,7 @@ with shared dividers (see `docs-containers.md` for every parameter).
 * **Item tray** (`item-tray`): grid of equal cells for tokens, columns x rows, flat floor or a shallow trough that rises toward two walls; dividers always full height.
 * **Card tray, flat** (`card-tray-flat`): card stacks lying face up in columns, finger gaps down into a floor groove (the floor is raised by the groove depth, so it never breaks through).
 * **Card tray, upright** (`card-tray-upright`): standing card stacks in columns, wedges in the long walls (on by default, sized relative to the stack slot unless set explicitly).
-* **Card tray, tilted** (`card-tray-tilted`): card display and dispenser, stacks leaning back in slots stepped one behind the other (columns), tilted dividers that can be lowered, an open front.
+* **Card tray, tilted** (`card-tray-tilted`): card display and dispenser, stacks leaning back in slots stepped one behind the other (columns), full-height tilted dividers, an open front; the back wall grows so the leaning cards stay inside the footprint (`overhangClearance` behind them).
 
 The first standard set (`tray`, `divided-tray`, `card-tray`) was replaced by
 these on 2026-11-06. Project files that still use them open as before: on load

@@ -30,8 +30,9 @@ describe('examples/containers-demo.json', () => {
     const r = resolveItem(tilted, project.settings, project.items);
     const def = getBoxType(tilted.type);
     const fp = def.footprint(r);
-    // 2·wall + 2·pitch + cell width at 15°, one lane deep.
-    expect(fp.width).toBeCloseTo(119.57, 1);
+    // 2·wall + 2·pitch + cell width at 15°, one lane deep; the cell includes the
+    // extra back wall (20·sin 15° overhang + 2 clearance = 7.18).
+    expect(fp.width).toBeCloseTo(126.74, 1);
     expect(fp.depth).toBeCloseTo(68.7, 6);
     expect(def.draw(r).filter((f) => f.kind === 'rect' && f.role === 'divider')).toHaveLength(2);
   });
