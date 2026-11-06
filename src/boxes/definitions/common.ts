@@ -308,24 +308,27 @@ export function stackNotches(notches: NotchSpec[], s: Stacking): NotchSpec[] {
 }
 
 /**
- * Open box with the stacking features: optional plug pad below the floor
- * (floor at Z = plugH), optional lip ring (outer wall/2) above the wall top,
- * optional recess ring cut from the outer bottom edge.
+ * Solid outer block of a stackable cavity box (outer W × D, `height` = floor +
+ * inner height above the plug) with the stacking features but no cavity:
+ * optional plug pad below the floor (the block starts at Z = plugH; the pad
+ * is the inner area W − 2·wall minus the clearance), optional lip ring
+ * (outer wall/2) above the wall top, optional recess ring cut from the outer
+ * bottom edge. `cutters` (cavities, dividers, notches, …) are subtracted in
+ * the same boolean as the recess ring; they come first so a single‑cavity box
+ * is exactly the v1 `stackedOpenBox`.
  */
-export function stackedOpenBox(
+export function stackedBlock(
   kernel: GeometryKernel,
-  innerWidth: number,
-  innerDepth: number,
-  innerHeight: number,
+  W: number,
+  D: number,
+  height: number,
   wall: number,
-  floor: number,
   s: Stacking,
+  cutters: Solid[] = [],
 ): Solid {
-  const W = innerWidth + 2 * wall;
-  const D = innerDepth + 2 * wall;
   const z0 = s.plugH;
-  const wallTop = z0 + floor + innerHeight;
-  const parts: Solid[] = [kernel.box(W, D, floor + innerHeight, [0, 0, z0])];
+  const wallTop = z0 + height;
+  const parts: Solid[] = [kernel.box(W, D, height, [0, 0, z0])];
   if (s.lipH > 0) {
     // Ring overlaps the wall by EPS so the union is clean.
     const t = wall / 2;
@@ -340,19 +343,36 @@ export function stackedOpenBox(
     const pd = D - 2 * wall - 2 * c;
     if (pw > 0 && pd > 0) parts.push(kernel.box(pw, pd, s.plugH + EPS, [wall + c, wall + c, 0]));
   }
-  let solid = parts.length === 1 ? parts[0] : kernel.union(parts);
-  const cutters: Solid[] = [kernel.box(innerWidth, innerDepth, innerHeight + s.lipH + EPS, [wall, wall, z0 + floor])];
+  const solid = parts.length === 1 ? parts[0] : kernel.union(parts);
+  const all = [...cutters];
   if (s.recessDepth > 0) {
     const r = wall / 2 + s.clearance;
     if (W - 2 * r > 0 && D - 2 * r > 0) {
       const ring = kernel.difference(kernel.box(W + 2 * EPS, D + 2 * EPS, s.recessDepth + EPS, [-EPS, -EPS, -EPS]), [
         kernel.box(W - 2 * r, D - 2 * r, s.recessDepth + 3 * EPS, [r, r, -2 * EPS]),
       ]);
-      cutters.push(ring);
+      all.push(ring);
     }
   }
-  solid = kernel.difference(solid, cutters);
-  return solid;
+  return all.length ? kernel.difference(solid, all) : solid;
+}
+
+/**
+ * Open box with the stacking features (see `stackedBlock`): the block of
+ * outer size inner + 2·wall minus one open‑top cavity that also clears the
+ * lip.
+ */
+export function stackedOpenBox(
+  kernel: GeometryKernel,
+  innerWidth: number,
+  innerDepth: number,
+  innerHeight: number,
+  wall: number,
+  floor: number,
+  s: Stacking,
+): Solid {
+  const cavity = kernel.box(innerWidth, innerDepth, innerHeight + s.lipH + EPS, [wall, wall, s.plugH + floor]);
+  return stackedBlock(kernel, innerWidth + 2 * wall, innerDepth + 2 * wall, floor + innerHeight, wall, s, [cavity]);
 }
 
 /** Validation of the stacking parameters for a cavity box. */
@@ -448,4 +468,59 @@ export function cavityBaseFeatures(W: number, D: number, wall: number, s: Stacki
     if (pw > 0 && pd > 0) return [{ kind: 'protrusion', x: wall + c, y: wall + c, width: pw, depth: pd, height: s.plugH, name: 'plug' }];
   }
   return [];
+}
+
+/* ---------------------------------------------------------------- cards */
+
+/** "Cards" parameter group shared by the card holders (same specs as the v1 card tray). */
+export const cardParams: ParamSpec[] = [
+  { key: 'cardWidth', label: 'Card width', kind: 'number', default: 63.5, min: 1, step: 0.5, unit: 'mm', group: 'Cards' },
+  { key: 'cardHeight', label: 'Card height', kind: 'number', default: 88, min: 1, step: 0.5, unit: 'mm', group: 'Cards' },
+  {
+    key: 'clearance',
+    label: 'Clearance',
+    kind: 'number',
+    default: 1,
+    min: 0,
+    step: 0.1,
+    unit: 'mm',
+    group: 'Cards',
+    help: 'Extra space on each side of the cards.',
+  },
+  {
+    key: 'stackHeight',
+    label: 'Stack thickness',
+    kind: 'number',
+    default: 30,
+    min: 1,
+    step: 0.5,
+    unit: 'mm',
+    group: 'Cards',
+    help: 'Thickness of the card stack (sleeved cards are ~0.5 mm each).',
+  },
+];
+
+/** Card size, clearance (per side) and stack thickness, from `cardParams`. */
+export interface CardDims {
+  cardWidth: number;
+  cardHeight: number;
+  clearance: number;
+  stackHeight: number;
+}
+
+export function cardDims(item: ResolvedItem): CardDims {
+  return {
+    cardWidth: num(item, 'cardWidth', 63.5),
+    cardHeight: num(item, 'cardHeight', 88),
+    clearance: num(item, 'clearance', 1),
+    stackHeight: num(item, 'stackHeight', 30),
+  };
+}
+
+/** Checks of the `cardParams` values. */
+export function validateCards(problems: string[], c: CardDims): void {
+  requirePositive(problems, 'Card width', c.cardWidth);
+  requirePositive(problems, 'Card height', c.cardHeight);
+  requirePositive(problems, 'Stack thickness', c.stackHeight);
+  if (c.clearance < 0) problems.push(`Clearance must not be negative (is ${c.clearance}).`);
 }

@@ -36,8 +36,16 @@ function expectFootprintMatchesSolid(def: BoxTypeDefinition, it: ResolvedItem) {
 }
 
 describe('registry', () => {
-  it('registers all five types once', () => {
-    expect(listBoxTypes().map((d) => d.id).sort()).toEqual(['card-tray', 'divided-tray', 'platform', 'spacer', 'tray']);
+  it('registers all standard types once', () => {
+    expect(listBoxTypes().map((d) => d.id).sort()).toEqual([
+      'card-tray',
+      'card-tray-flat',
+      'divided-tray',
+      'item-tray',
+      'platform',
+      'spacer',
+      'tray',
+    ]);
     expect(getBoxType('tray')).toBe(tray);
   });
 });

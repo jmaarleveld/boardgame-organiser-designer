@@ -2,6 +2,7 @@ import type { BoxTypeDefinition, TopViewFeature } from '../types';
 import type { ResolvedItem } from '../../model/types';
 import type { Solid } from '../../geometry/types';
 import {
+  cardParams,
   cavityBaseFeatures,
   cavityBearingAreas,
   notchCutter,
@@ -72,30 +73,7 @@ export const cardTray: BoxTypeDefinition = {
   name: 'Card tray',
   description: 'Holder for a stack of cards, lying flat or standing upright.',
   params: [
-    { key: 'cardWidth', label: 'Card width', kind: 'number', default: 63.5, min: 1, step: 0.5, unit: 'mm', group: 'Cards' },
-    { key: 'cardHeight', label: 'Card height', kind: 'number', default: 88, min: 1, step: 0.5, unit: 'mm', group: 'Cards' },
-    {
-      key: 'clearance',
-      label: 'Clearance',
-      kind: 'number',
-      default: 1,
-      min: 0,
-      step: 0.1,
-      unit: 'mm',
-      group: 'Cards',
-      help: 'Extra space on each side of the cards.',
-    },
-    {
-      key: 'stackHeight',
-      label: 'Stack thickness',
-      kind: 'number',
-      default: 30,
-      min: 1,
-      step: 0.5,
-      unit: 'mm',
-      group: 'Cards',
-      help: 'Thickness of the card stack (sleeved cards are ~0.5 mm each).',
-    },
+    ...cardParams,
     {
       key: 'orientation',
       label: 'Orientation',
