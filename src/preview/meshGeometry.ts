@@ -16,6 +16,21 @@ import type { MeshData } from '../geometry/types';
 /** Faces meeting at a larger angle than this get an edge line (coplanar triangulation diagonals never do). */
 export const EDGE_THRESHOLD_DEG = 20;
 
+/** Error message for a kernel build that produced no triangles. */
+export const EMPTY_MESH_ERROR = 'The geometry came out empty (check the parameters for errors)';
+
+/**
+ * A kernel mesh as the 3D views may show it: throws when it has no triangles.
+ * An invalid CSG input (e.g. a box with a negative size) makes manifold return
+ * an empty solid instead of throwing; drawn as is, the item would simply
+ * vanish. Treated as a build failure, the views show the placeholder and the
+ * error instead.
+ */
+export function requireNonEmptyMesh(mesh: MeshData): MeshData {
+  if (mesh.indices.length < 3 || mesh.positions.length < 9) throw new Error(EMPTY_MESH_ERROR);
+  return mesh;
+}
+
 /** Indexed BufferGeometry of a kernel mesh, with normals and a bounding sphere/box. */
 export function meshGeometry(data: MeshData): THREE.BufferGeometry {
   const g = new THREE.BufferGeometry();

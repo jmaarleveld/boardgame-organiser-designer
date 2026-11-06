@@ -13,6 +13,7 @@ import type { Project } from '../model/types';
 import type { Exporter } from '../services/contracts';
 import { safeGeometryKey } from '../services/exporter';
 import { LruCache, missingKeys } from './assemblyScene';
+import { requireNonEmptyMesh } from './meshGeometry';
 
 export const MESH_CACHE_CAPACITY = 64;
 export const BUILD_DEBOUNCE_MS = 200;
@@ -39,6 +40,8 @@ function countBuild(): void {
   const dbg = (window.__bgid ??= {});
   dbg.meshBuilds = (dbg.meshBuilds ?? 0) + 1;
   dbg.meshCacheSize = () => meshCache.size;
+  dbg.meshFailures = () => Object.fromEntries(failures);
+  dbg.meshInflight = () => inflight.size;
 }
 
 export { safeGeometryKey };
@@ -49,6 +52,7 @@ function buildKey(exporter: Exporter, project: Project, itemId: string, key: str
     countBuild();
     p = exporter
       .previewMesh(project, itemId)
+      .then(requireNonEmptyMesh)
       .then(
         (mesh) => meshCache.set(key, mesh, protect),
         (e: unknown) => {

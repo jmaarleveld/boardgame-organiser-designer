@@ -4,6 +4,7 @@ import { useServices } from '../integration';
 import { useStore } from '../state/store';
 import { downloadBlob as saveBlob, safeFileName } from '../services/download';
 import { safeGeometryKey } from '../services/exporter';
+import { requireNonEmptyMesh } from '../preview/meshGeometry';
 
 /** 3D preview of the selected item (requires exporter + Preview3D services). */
 export function PreviewPane() {
@@ -26,6 +27,7 @@ export function PreviewPane() {
     const t = setTimeout(() => {
       exporter
         .previewMesh(useStore.getState().project, selectedId)
+        .then(requireNonEmptyMesh)
         .then((mesh) => {
           if (!cancelled) setResult({ key, itemId: selectedId, mesh, error: null });
         })

@@ -11,7 +11,7 @@ import type { PlacedItem, Project } from '../model/types';
 import { createEmptyProject } from '../model/types';
 import { registerAllBoxTypes } from '../boxes/index';
 import { createExporter } from '../services/exporter';
-import { EDGE_THRESHOLD_DEG, MeshGeometryCache, meshEdges, meshGeometry } from './meshGeometry';
+import { EDGE_THRESHOLD_DEG, EMPTY_MESH_ERROR, MeshGeometryCache, meshEdges, meshGeometry, requireNonEmptyMesh } from './meshGeometry';
 
 let k: GeometryKernel;
 beforeAll(async () => {
@@ -128,5 +128,16 @@ describe('MeshGeometryCache', () => {
     expect(cache.get(a)).toBe(ga);
     cache.dispose();
     expect(cache.size).toBe(0);
+  });
+});
+
+describe('requireNonEmptyMesh', () => {
+  it('passes a mesh with triangles through unchanged', () => {
+    const mesh: MeshData = { positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), indices: new Uint32Array([0, 1, 2]) };
+    expect(requireNonEmptyMesh(mesh)).toBe(mesh);
+  });
+
+  it('rejects an empty mesh, so the 3D views show a placeholder and an error instead of nothing', () => {
+    expect(() => requireNonEmptyMesh({ positions: new Float32Array(0), indices: new Uint32Array(0) })).toThrow(EMPTY_MESH_ERROR);
   });
 });

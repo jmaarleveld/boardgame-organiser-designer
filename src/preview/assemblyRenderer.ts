@@ -452,6 +452,22 @@ export function createAssemblyScene(host: HTMLDivElement, opts: AssemblySceneOpt
   dom.addEventListener('pointerdown', onDown);
   dom.addEventListener('pointerup', onUp);
 
+  /** Dev-only: signed volume of an indexed geometry (negative → inverted winding). */
+  function signedVolume(g: THREE.BufferGeometry): number {
+    const pos = g.getAttribute('position');
+    const idx = g.index;
+    if (!pos || !idx) return 0;
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    let v = 0;
+    for (let i = 0; i < idx.count; i += 3) {
+      a.fromBufferAttribute(pos, idx.getX(i));
+      b.fromBufferAttribute(pos, idx.getX(i + 1));
+      c.fromBufferAttribute(pos, idx.getX(i + 2));
+      v += a.dot(b.cross(c)) / 6;
+    }
+    return v;
+  }
+
   // Dev-only: game-box-frame bounds of every item object (for browser checks).
   let debugBounds: (() => unknown) | null = null;
   if (import.meta.env.DEV) {
@@ -467,6 +483,9 @@ export function createAssemblyScene(host: HTMLDivElement, opts: AssemblySceneOpt
         return {
           id,
           placeholder: obj.geometry === unitBox,
+          vertices: obj.geometry.getAttribute('position')?.count ?? 0,
+          triangles: (obj.geometry.index?.count ?? 0) / 3,
+          volume: r(signedVolume(obj.geometry)),
           faded: !!obj.userData.faded,
           color: `#${(obj.material as THREE.MeshStandardMaterial).color.getHexString()}`,
           edgeSegments: (edgeLines.get(id)?.geometry.getAttribute('position')?.count ?? 0) / 2,
