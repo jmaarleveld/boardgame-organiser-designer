@@ -163,10 +163,10 @@ a plate with optional corner stops (engagement = `stopHeight`).
 
 | id             | Purpose                                     | Key params |
 |----------------|---------------------------------------------|------------|
-| `item-tray`    | Token tray, N×M cells, flat or scoop floor  | innerWidth/Depth/Height (one cell), columns, rows, dividerThickness, dividerHeight, floorShape (`flat`/`scoop`), scoopSides (`long`/`short`), scoopRadius |
+| `item-tray`    | Token tray, N×M cells, flat or scoop floor  | innerWidth/Depth/Height (one cell), columns, rows, dividerThickness (dividers always full height), floorShape (`flat`/`scoop`), scoopSides (`long`/`short`), scoopRise |
 | `card-tray-flat` | Card stacks lying flat, finger gaps into a raised floor (never through it), repeats along X | cardParams, columns, dividerThickness, gapWidth, gapFloorDepth, gapReach, gapSides (`sides`/`ends`/`both`) |
 | `card-tray-upright` | Card stacks standing, wedges in the long walls, repeats along X | cardParams, exposedHeight, columns, dividerThickness, dividerHeight, wedges, wedgeTopWidth, wedgeBottomWidth, wedgeDepth (sizes 0 = auto, relative to the cell) |
-| `card-tray-tilted` | Card dispenser: stacks leaning back, open front, repeats along Y | cardParams, tiltAngle, exposedHeight, frontHeight, rows, dividerThickness, dividerHeight |
+| `card-tray-tilted` | Card display / dispenser: stacks leaning back, stepped one behind the other along X with tilted dividers, open front | cardParams, tiltAngle, exposedHeight, frontHeight, columns, dividerThickness, dividerHeight |
 | `spacer`       | Solid filler block to take up slack         | width, depth, height |
 | `platform`     | Plate bridging trays to carry the next level | width, depth, thickness, cornerStops, stopSize, stopHeight, stopInset, locateItems |
 
@@ -320,7 +320,9 @@ printed part with shared inner walls. Box types never loop over cells.
   `cellBearing(frame)`, optional `dividerHeight` (lowered when 0 < h < cell
   height) and `straightDividers` (default true; false when dividers are not
   straight vertical walls: the framework then neither draws, reports nor
-  lowers them).
+  lowers them, and an explicit pitch may be smaller than the cell size, i.e.
+  the cells' bounding boxes may overlap as long as the cavities do not; the
+  type then validates its divider thickness itself).
 
 Outer size: W = 2·wall + (cols − 1)·pitchX + cell.width, D likewise, H =
 `stackedHeight(cell.height, floor, stacking)`. Cell (col, row) has its inner
@@ -336,7 +338,8 @@ cell's cutters, in one boolean; `tiledDraw` (cavities, then dividers, then
 notches); `tiledBearingAreas` (outer ring via `cavityBearingAreas`, dividers
 as `bearing` or `low`, plus cell areas); `tiledBaseFeatures`;
 `tiledValidate` (whole counts ≥ 1, wall / floor > 0, divider thickness > 0
-when more than one cell, pitch ≥ cell size, divider height range,
+when more than one cell, pitch ≥ cell size unless `straightDividers` is
+false, divider height range,
 `validateStacking`); `tilingParams(axes)` (group "Repeat": `columns` and / or
 `rows` for `'x'` / `'y'` / `'xy'`, plus `dividerThickness`, default 1 / 1 /
 1.2 mm); `dividerHeightParam`; `tilingOf(item, axes)` (raw counts as given:
@@ -348,8 +351,9 @@ and on full‑height dividers. A feature in a shared divider is cut by one cell
 only: a cell cuts its left / front side only when that side is outer, its
 right / back side always. Shared dividers are `divider` thick, not `wall`.
 
-**Per type.** `item-tray` (X and Y): optional concave scoop fillets in two
-opposite walls of each cell. `card-tray-flat` (X): rectangular finger gaps
+**Per type.** `item-tray` (X and Y): optional shallow trough floor per cell
+(a circular segment between two opposite walls, rising `scoopRise` at them);
+dividers always full height. `card-tray-flat` (X): rectangular finger gaps
 through the walls that continue `gapFloorDepth` into the floor and `gapReach`
 (default 10 mm) into the cavity under the cards; with gaps the cavity floor is
 raised by `gapFloorDepth` (the spec's floor is `floor + gapFloorDepth`), so the
@@ -359,10 +363,15 @@ the two outer long walls (cell X = stackHeight + c, Z = cardHeight −
 exposedHeight), toggled by `wedges`; sizes 0 = auto: top 60 % of the cell X
 span, bottom 40 % of the top, depth 60 % of the inner height; `keepOut` for the
 standing cards. `card-tray-tilted`
-(Y): cell width = H·tan θ + T/cos θ with H = (cardHeight − exposedHeight)·cos θ;
-the tilted slot may notch the back lip on steep tilts; the front opening above
-`frontHeight` is removed; its bearing areas wrap the framework's (front opening
-removed, a `low` shelf at `frontHeight`); `keepOut` height is exposed·cos θ +
+(X, stepped): cell width = H·tan θ + s with s = T/cos θ and H = (cardHeight −
+exposedHeight)·cos θ, pitch s + t/cos θ (smaller than the cell: the framework
+allows that with `straightDividers: false`), so a tilted divider t thick stands
+between neighbouring slots; `dividerHeight` lowers those dividers (the type
+cuts them itself; about `frontHeight` gives a terraced display where each deck
+leans on the one behind); slot 0 may notch the back lip on steep tilts; only
+the front wall (last slot) gets the opening above `frontHeight`; its bearing
+areas wrap the framework's (front opening removed, a `low` shelf at
+`frontHeight`, tilted divider tops added); `keepOut` height is exposed·cos θ +
 stackHeight·sin θ − lipH and may start at negative local x (cards overhang the
 back; `keepOutViolations` checks that, `itemsOutsideUsable` ignores keep‑outs).
 See `docs-containers.md`.

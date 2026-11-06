@@ -154,6 +154,8 @@ describe('tiling validation', () => {
     expect(v({ rows: 1.5 })).toMatch(/Rows must be a whole number ≥ 1 \(is 1.5\)/);
     expect(v({ divider: 0 })).toMatch(/Divider thickness must be greater than 0/);
     expect(v({ cell: { width: 20, depth: 10, height: 15, pitchX: 18 } })).toMatch(/Column pitch \(18 mm\) must not be smaller than the cell width \(20 mm\)/);
+    // Non-straight (tilted) dividers: cells may overlap in bounding box.
+    expect(v({ cell: { width: 20, depth: 10, height: 15, pitchX: 18 }, straightDividers: false })).toBe('');
     expect(v({ dividerHeight: -1 })).toMatch(/Divider height must not be negative/);
     expect(v({ dividerHeight: 20 })).toMatch(/Divider height \(20 mm\) must not exceed the inner height/);
     expect(v({ wall: 0 })).toMatch(/Wall thickness/);

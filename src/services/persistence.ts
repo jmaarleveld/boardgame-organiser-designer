@@ -26,7 +26,7 @@ type Params = PlacedItem['params'];
 
 /** Parameter defaults of the deleted v1 types (an omitted param resolved to these). */
 const V1_TRAY_DEFAULTS = { innerWidth: 60, innerDepth: 40, innerHeight: 30 };
-const V1_DIVIDED_DEFAULTS = { innerWidth: 90, innerDepth: 60, innerHeight: 25, columns: 3, rows: 2, dividerThickness: 1.2, dividerHeight: 0 };
+const V1_DIVIDED_DEFAULTS = { innerWidth: 90, innerDepth: 60, innerHeight: 25, columns: 3, rows: 2, dividerThickness: 1.2 };
 /** v1 params with no v2 equivalent (finger notches, card tray orientation): dropped. */
 const V1_DROPPED = ['fingerNotch', 'notchSides', 'notchWidth', 'notchDepth', 'orientation'];
 
@@ -54,7 +54,8 @@ function clean(v: number): number {
  *
  * - `tray` → `item-tray` 1 × 1, same inner size, flat floor.
  * - `divided-tray` (inner W × D, c columns, r rows, dividers t) → `item-tray`
- *   c × r with per-cell innerWidth (W − (c−1)·t)/c and innerDepth (D − (r−1)·t)/r.
+ *   c × r with per-cell innerWidth (W − (c−1)·t)/c and innerDepth (D − (r−1)·t)/r;
+ *   `dividerHeight` is dropped (item tray dividers are always full height).
  * - `card-tray` → `card-tray-flat` or `card-tray-upright` by its orientation
  *   (card params, clearance, stack height and, upright, exposed height carry
  *   over; gaps and wedges get their defaults, except that a flat tray gets
@@ -88,14 +89,13 @@ export function migrateLegacyItem(item: PlacedItem): PlacedItem {
         ...item,
         type: 'item-tray',
         params: {
-          ...without(params, V1_DROPPED),
+          ...without(params, [...V1_DROPPED, 'dividerHeight']),
           innerWidth: clean((w - (cols - 1) * t) / cols),
           innerDepth: clean((dp - (rows - 1) * t) / rows),
           innerHeight: numParam(params, 'innerHeight', d.innerHeight),
           columns: cols,
           rows,
           dividerThickness: t,
-          dividerHeight: numParam(params, 'dividerHeight', d.dividerHeight),
           floorShape: 'flat',
         },
       };

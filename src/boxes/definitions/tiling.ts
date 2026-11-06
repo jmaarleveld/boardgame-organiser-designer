@@ -119,8 +119,10 @@ export interface TiledBoxSpec {
   dividerHeight?: number;
   /**
    * false when the dividers are not straight vertical walls (e.g. the tilted
-   * dispenser): the framework then neither draws, reports nor lowers them.
-   * Default true.
+   * dispenser): the framework then neither draws, reports nor lowers them,
+   * and an explicit pitch may be smaller than the cell size (overlapping
+   * bounding boxes; `sides` / `gapX` / `gapY` are then negative and
+   * meaningless for shared sides). Default true.
    */
   straightDividers?: boolean;
 }
@@ -314,7 +316,10 @@ export function tiledBaseFeatures(spec: TiledBoxSpec): BaseFeature[] {
 /**
  * Framework checks: whole counts ≥ 1, wall / floor > 0, a positive divider
  * (pitch ≥ cell size) along every axis with more than one cell, divider
- * height range, and the stacking checks on the outer box. The cell's own
+ * height range, and the stacking checks on the outer box. With
+ * `straightDividers: false` an explicit pitch may be smaller than the cell
+ * (the cells' bounding boxes overlap, their cavities must not: the type
+ * checks that, and its divider thickness, itself). The cell's own
  * size and features are the type's business.
  */
 export function tiledValidate(problems: string[], spec: TiledBoxSpec): void {
@@ -327,10 +332,13 @@ export function tiledValidate(problems: string[], spec: TiledBoxSpec): void {
   if ((L.cols > 1 && spec.cell.pitchX === undefined) || (L.rows > 1 && spec.cell.pitchY === undefined)) {
     requirePositive(problems, 'Divider thickness', spec.divider);
   }
-  if (L.cols > 1 && spec.cell.pitchX !== undefined && !(L.gapX >= 0)) {
+  // Non‑straight (e.g. tilted) dividers: the cells' bounding boxes may overlap
+  // although their cavities do not, so the pitch may be smaller than the cell.
+  const straight = spec.straightDividers !== false;
+  if (straight && L.cols > 1 && spec.cell.pitchX !== undefined && !(L.gapX >= 0)) {
     problems.push(`Column pitch (${round(L.pitchX)} mm) must not be smaller than the cell width (${round(spec.cell.width)} mm).`);
   }
-  if (L.rows > 1 && spec.cell.pitchY !== undefined && !(L.gapY >= 0)) {
+  if (straight && L.rows > 1 && spec.cell.pitchY !== undefined && !(L.gapY >= 0)) {
     problems.push(`Row pitch (${round(L.pitchY)} mm) must not be smaller than the cell depth (${round(spec.cell.depth)} mm).`);
   }
   const dh = spec.dividerHeight ?? 0;

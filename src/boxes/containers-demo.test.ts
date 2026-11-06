@@ -24,6 +24,18 @@ describe('examples/containers-demo.json', () => {
     expect(project.items).toHaveLength(5);
   });
 
+  it('the tilted dispenser has 3 stepped slots along X', () => {
+    const tilted = project.items.find((i) => i.type === 'card-tray-tilted')!;
+    expect(tilted.params).toMatchObject({ columns: 3 });
+    const r = resolveItem(tilted, project.settings, project.items);
+    const def = getBoxType(tilted.type);
+    const fp = def.footprint(r);
+    // 2·wall + 2·pitch + cell width at 15°, one lane deep.
+    expect(fp.width).toBeCloseTo(119.57, 1);
+    expect(fp.depth).toBeCloseTo(68.7, 6);
+    expect(def.draw(r).filter((f) => f.kind === 'rect' && f.role === 'divider')).toHaveLength(2);
+  });
+
   it('every item validates clean and builds a valid solid', () => {
     for (const item of project.items) {
       const def = getBoxType(item.type);

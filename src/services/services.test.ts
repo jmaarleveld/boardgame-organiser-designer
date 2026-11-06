@@ -126,7 +126,7 @@ describe('persistence', () => {
     expect(byId.get('t')!.params).toEqual({ stackTop: 'lip', innerWidth: 60, innerDepth: 40, innerHeight: 30, floorShape: 'flat' });
     expect(byId.get('tw')).toMatchObject({ type: 'item-tray', wall: 2, params: { innerWidth: 50, innerDepth: 40, innerHeight: 30 } });
     expect(byId.get('d')!.params).toEqual({
-      innerWidth: 19.2, innerDepth: 19.4, innerHeight: 25, columns: 3, rows: 2, dividerThickness: 1.2, dividerHeight: 10,
+      innerWidth: 19.2, innerDepth: 19.4, innerHeight: 25, columns: 3, rows: 2, dividerThickness: 1.2,
       floorShape: 'flat', stackBottom: 'recess',
     });
     expect(byId.get('dd')!.params).toMatchObject({ innerWidth: 29.2, innerDepth: 29.4, columns: 3, rows: 2 });

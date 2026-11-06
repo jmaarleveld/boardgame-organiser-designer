@@ -24,7 +24,7 @@
       "x": 132,
       "y": 1,
       "rotation": 0,
-      "params": { "columns": 2, "rows": 1, "floorShape": "scoop", "scoopSides": "long", "scoopRadius": 10 }
+      "params": { "columns": 2, "rows": 1, "floorShape": "scoop", "scoopSides": "long", "scoopRise": 3 }
     },
     {
       "id": "ct-flat",
@@ -47,11 +47,11 @@
     {
       "id": "ct-tilted",
       "type": "card-tray-tilted",
-      "label": "Card tray tilted dispenser, 2 rows, 15 degrees, open front at +X",
-      "x": 246,
-      "y": 1,
+      "label": "Card tray tilted dispenser, 3 stepped columns, 15 degrees, open front at +X",
+      "x": 6,
+      "y": 171,
       "rotation": 0,
-      "params": { "rows": 2, "tiltAngle": 15 }
+      "params": { "columns": 3, "tiltAngle": 15 }
     }
   ]
 }

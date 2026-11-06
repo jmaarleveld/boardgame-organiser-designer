@@ -56,35 +56,67 @@ describe('item-tray', () => {
     }
   });
 
-  it('scoop floor adds the fillet material (cavity shrinks)', () => {
-    const flat = k.volume(itemTray.build(item(itemTray, { columns: 2, rows: 2 }), k));
-    for (const scoopSides of ['long', 'short']) {
-      const it = item(itemTray, { columns: 2, rows: 2, floorShape: 'scoop', scoopSides });
-      const s = expectFootprintMatchesSolid(itemTray, it);
-      const along = scoopSides === 'long' ? 40 : 30; // the scooped walls run along the long (X, 40) or short (Y, 30) side
-      const fillet = (10 * 10 - (Math.PI * 10 * 10) / 4) * along;
-      const added = k.volume(s) - flat;
-      expect(added).toBeGreaterThan(0);
-      expect(Math.abs(added - 4 * 2 * fillet) / (8 * fillet)).toBeLessThan(0.02);
-      expect(itemTray.validate!(it)).toEqual([]);
+  // Trough per cell: span w across the scoop walls, rise h, radius R; the raised material beside the arc.
+  const segment = (w: number, h: number) => {
+    const R = (w * w / 4 + h * h) / (2 * h);
+    return { R, raised: w * h - (R * R * Math.acos((R - h) / R) - (R - h) * Math.sqrt(2 * R * h - h * h)) };
+  };
+
+  it('scoop floor: a shallow trough adds the raised material beside the arc in every cell', () => {
+    expect(segment(30, 3).R).toBeCloseTo(39, 9); // default 40 × 30 cell, long walls, rise 3
+    for (const [columns, rows] of [[1, 1], [2, 1], [3, 2]]) {
+      const flat = k.volume(itemTray.build(item(itemTray, { columns, rows }), k));
+      for (const scoopSides of ['long', 'short']) {
+        for (const scoopRise of [3, 8]) {
+          const it = item(itemTray, { columns, rows, floorShape: 'scoop', scoopSides, scoopRise });
+          const s = expectFootprintMatchesSolid(itemTray, it);
+          // long: scoop walls run along X (40), span 30; short: along Y (30), span 40.
+          const [along, span] = scoopSides === 'long' ? [40, 30] : [30, 40];
+          const expected = columns * rows * segment(span, scoopRise).raised * along;
+          expect(Math.abs(k.volume(s) - flat - expected) / expected).toBeLessThan(0.01);
+          expect(itemTray.validate!(it)).toEqual([]);
+        }
+      }
     }
   });
 
-  it('scoop radius is clamped to the height and half the span', () => {
-    const big = item(itemTray, { floorShape: 'scoop', scoopRadius: 100 });
-    expectFootprintMatchesSolid(itemTray, big);
-    const r = 15; // half of the 30 mm span across the long walls
-    const flat = k.volume(itemTray.build(item(itemTray), k));
-    const fillet = (r * r - (Math.PI * r * r) / 4) * 40;
-    expect(Math.abs(k.volume(itemTray.build(big, k)) - flat - 2 * fillet) / (2 * fillet)).toBeLessThan(0.02);
+  it('scoop floor: lowest at the cell centre, floorZ + rise at the scoop walls', () => {
+    const top = FLOOR + 20;
+    const floorAt = (s: ReturnType<typeof itemTray.build>, x: number, y: number) =>
+      k.bounds(k.intersection([s, k.box(0.2, 0.2, top - 1, [x - 0.1, y - 0.1, 0])])).max[2];
+    for (const scoopSides of ['long', 'short']) {
+      const s = itemTray.build(item(itemTray, { columns: 2, rows: 2, floorShape: 'scoop', scoopSides, scoopRise: 3 }), k);
+      for (const [cx, cy] of [[WALL, WALL], [WALL + 41.2, WALL + 31.2]]) {
+        expect(floorAt(s, cx + 20, cy + 15)).toBeCloseTo(FLOOR, 1);
+        // Just inside the scoop walls (0.15 mm in) and just inside the other two walls.
+        const [atWall, atOther] = scoopSides === 'long'
+          ? [floorAt(s, cx + 20, cy + 0.15), floorAt(s, cx + 0.15, cy + 15)]
+          : [floorAt(s, cx + 0.15, cy + 15), floorAt(s, cx + 20, cy + 0.15)];
+        expect(Math.abs(atWall - (FLOOR + 3))).toBeLessThan(0.1);
+        expect(atOther).toBeCloseTo(FLOOR, 1);
+      }
+    }
   });
 
-  it('lowered dividers', () => {
-    const full = k.volume(itemTray.build(item(itemTray, { columns: 3 }), k));
-    const low = expectFootprintMatchesSolid(itemTray, item(itemTray, { columns: 3, dividerHeight: 8 }));
-    expect(full - k.volume(low)).toBeCloseTo(2 * 1.2 * 30 * 12, 2);
-    const areas = itemTray.bearingAreas!(item(itemTray, { columns: 3, dividerHeight: 8 })).filter((a) => a.name === 'divider');
-    expect(areas.map((a) => a.role)).toEqual(['low', 'low']);
+  it('dividers are always full height; dividerHeight is not a param and is ignored', () => {
+    expect(itemTray.params.map((p) => p.key)).not.toContain('dividerHeight');
+    expect(itemTray.params.map((p) => p.key)).not.toContain('scoopRadius');
+    const rise = itemTray.params.find((p) => p.key === 'scoopRise')!;
+    expect(rise).toMatchObject({ label: 'Rise at the walls', default: 3, min: 0.2, step: 0.5, unit: 'mm', group: 'Floor' });
+    expect(rise.visibleIf!({ floorShape: 'scoop' })).toBe(true);
+    expect(rise.visibleIf!({ floorShape: 'flat' })).toBe(false);
+    for (const floorShape of ['flat', 'scoop']) {
+      const full = k.volume(itemTray.build(item(itemTray, { columns: 3, rows: 2, floorShape }), k));
+      const old = item(itemTray, { columns: 3, rows: 2, floorShape, dividerHeight: 8 });
+      expect(k.volume(expectFootprintMatchesSolid(itemTray, old))).toBeCloseTo(full, 6);
+      expect(itemTray.validate!(item(itemTray, { columns: 3, dividerHeight: 30 }))).toEqual([]);
+      const areas = itemTray.bearingAreas!(old).filter((a) => a.name === 'divider');
+      expect(areas).toHaveLength(3);
+      for (const a of areas) {
+        expect(a.role ?? 'bearing').toBe('bearing');
+        expect(a.height).toBeCloseTo(FLOOR + 20, 9);
+      }
+    }
   });
 
   it('stacking variants build and validate', () => {
@@ -104,8 +136,13 @@ describe('item-tray', () => {
     expect(itemTray.validate!(item(itemTray, { rows: 2.5 })).join()).toMatch(/Rows must be a whole number/);
     expect(itemTray.validate!(item(itemTray, { columns: 2, dividerThickness: 0 })).join()).toMatch(/Divider thickness/);
     expect(itemTray.validate!(item(itemTray, { innerWidth: 0 })).join()).toMatch(/Cell width/);
-    expect(itemTray.validate!(item(itemTray, { dividerHeight: 30 })).join()).toMatch(/Divider height/);
-    expect(itemTray.validate!(item(itemTray, { floorShape: 'scoop', scoopRadius: 0 })).join()).toMatch(/Scoop radius/);
+    expect(itemTray.validate!(item(itemTray, { floorShape: 'scoop', scoopRise: 0 }))).toEqual(['Rise at the walls must be greater than 0 (is 0).']);
+    expect(itemTray.validate!(item(itemTray, { floorShape: 'scoop', scoopRise: -1 })).join()).toMatch(/Rise at the walls must be greater than 0/);
+    expect(itemTray.validate!(item(itemTray, { floorShape: 'scoop', scoopRise: 20 }))).toEqual([
+      'Rise at the walls (20 mm) must be less than the inner height (20 mm).',
+    ]);
+    expect(itemTray.validate!(item(itemTray, { floorShape: 'scoop', scoopRise: 19.5 }))).toEqual([]);
+    expect(itemTray.validate!(item(itemTray, { floorShape: 'flat', scoopRise: 50 }))).toEqual([]);
   });
 });
 
@@ -193,6 +230,33 @@ describe('card-tray-flat', () => {
       expect(k.volume(inCavity)).toBeCloseTo(5 * 24 * FLOOR, 4);
       expect(cardTrayFlat.footprint(it).height).toBeCloseTo(FLOOR + G + 30, 9);
     }
+  });
+
+  it('with a recessed base the slab under the groove clears the recess', () => {
+    const recess = 2 + 0.15; // lipHeight + clearance
+    const grooveFloor = recess + 0.4;
+    const it = item(cardTrayFlat, { stackBottom: 'recess' });
+    // Raised by the extra slab, and by exactly that (gaps on); lip adds on top.
+    expect(cardTrayFlat.footprint(it).height).toBeCloseTo(grooveFloor + 2 + 30, 9);
+    expect(cardTrayFlat.footprint(item(cardTrayFlat, { stackBottom: 'recess', stackTop: 'lip' })).height).toBeCloseTo(grooveFloor + 2 + 30 + 2, 9);
+    // Without gaps the floor is not raised and the extra does not apply.
+    expect(cardTrayFlat.footprint(item(cardTrayFlat, { stackBottom: 'recess', gapWidth: 0 })).height).toBeCloseTo(FLOOR + 30, 9);
+    // A floor already thicker than recess + 0.4 is kept.
+    expect(cardTrayFlat.footprint(item(cardTrayFlat, { stackBottom: 'recess' }, WALL, 4)).height).toBeCloseTo(4 + 2 + 30, 9);
+    expectFootprintMatchesSolid(cardTrayFlat, it);
+    const s = cardTrayFlat.build(it, k);
+    // Outer half of the left wall (x from 0 to wall/2) at the gap: material from the recess top up to the groove bottom.
+    const y0 = WALL + cd / 2 - 12;
+    const outer = k.intersection([s, k.box(WALL / 2 - 0.1, 24, grooveFloor + 1, [0.05, y0, 0])]);
+    const bo = k.bounds(outer);
+    // The recess ring is wall/2 + clearance wide, so the outer half is only there above the recess top.
+    expect(bo.max[2]).toBeCloseTo(grooveFloor, 6);
+    const above = k.intersection([s, k.box(WALL / 2 - 0.1, 24, grooveFloor - recess, [0.05, y0, recess])]);
+    expect(k.volume(above)).toBeCloseTo((WALL / 2 - 0.1) * 24 * (grooveFloor - recess), 4);
+    // The slab under the groove is solid across the whole wall thickness above the recess.
+    expect(grooveFloor - recess).toBeCloseTo(0.4, 9);
+    // Groove volume: slab grooveFloor + G, minus the recess ring (checked indirectly by validity).
+    expect(k.isValid(s)).toBe(true);
   });
 
   it('gaps cut the shared dividers once', () => {

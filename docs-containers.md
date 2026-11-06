@@ -19,7 +19,7 @@ themselves: that is the framework's job, so repeating is never hard‑coded.
 |---------------------|--------------------------------------------------|-----------|
 | `card-tray-flat`    | card stack lying flat, finger gaps into a raised floor | columns (X) |
 | `card-tray-upright` | card stack standing, wedges in the long outer walls | columns (X) |
-| `card-tray-tilted`  | standing stack leaning back, open front (dispenser) | rows (Y) |
+| `card-tray-tilted`  | standing stack leaning back, open front (dispenser) | columns (X), stepped |
 | `item-tray`         | small token tray, flat or scoop floor            | columns × rows |
 
 Local frame as everywhere: X = width, Y = depth, Z = up, origin = outer
@@ -88,7 +88,9 @@ Framework functions:
 * `tiledBaseFeatures(spec)` -> `cavityBaseFeatures` of the outer ring.
 * `tiledValidate(problems, spec)` -> whole counts >= 1, wall and floor > 0,
   divider thickness > 0 when a repeated axis has no explicit pitch, pitch >=
-  cell size, divider height in 0..cell height, plus `validateStacking`.
+  cell size (only with straight dividers: with `straightDividers: false` the
+  cells' bounding boxes may overlap, e.g. the tilted tray's stepped slots, and
+  `sides` / `gapX` are then negative for shared sides), divider height in 0..cell height, plus `validateStacking`.
 * `tilingParams(axes)` -> `columns` / `rows` / `dividerThickness` ParamSpecs
   (group "Repeat", only the supported counts; defaults 1, 1, 1.2 mm).
   `dividerHeightParam` is the optional "Repeat" `dividerHeight` (0 = full).
@@ -125,8 +127,11 @@ gapFloorDepth and frames, outer block, bearing areas and base features follow.
 The groove is cut from the cavity floor down to the structural floor (exactly
 `gapFloorDepth` deep, `floor` mm of material left under it), so it never breaks
 through; the wall gap runs from the top down to the groove bottom. Outer height
-= plugH + floor + gapFloorDepth + stackHeight + lipH (default 1.2 + 2 + 30 =
-33.2 mm without stacking). Without gaps the floor is not raised.
+= plugH + grooveFloor + gapFloorDepth + stackHeight + lipH, where
+`grooveFloor` = `floor`, or with a recessed base max(`floor`, recessDepth +
+0.4), so the recess ring never meets the gap under the outer wall (default 1.2
++ 2 + 30 = 33.2 mm without stacking; 2.55 + 2 + 30 = 34.55 mm with a recess,
+plus the lip). Without gaps the floor is not raised.
 
 `gapSides`: `sides` (default; walls parallel to Y, at the cards' long edges) /
 `ends` (walls parallel to X) / `both`. Gaps are centred on the cell and cut
@@ -139,67 +144,121 @@ gap narrower than the wall it is cut from. No `dividerHeight`.
 Cell: `stackHeight + c` (X, the stack direction) x `cardWidth + 2c` (Y) x
 `cardHeight - exposedHeight` (Z). `exposedHeight` (default 20) is in the group
 "Cards". Cards stand portrait, faces looking +-X. Repeats along X. **Wedges**
-(group "Wedge"): a trapezoid cut from the top of the two outer long walls (the
-walls parallel to X at the front and back, only when outer), one pair per cell,
-centred on the cell, through the wall and the lip (an XZ polygon extruded and
-rotated into place). `wedges` (boolean, default true) switches them on; the
-three sizes are shown only when it is on and default to 0 = auto, relative to
-the cell: `wedgeTopWidth` 60 % of the cell X span (stackHeight + c; 18.6 mm by
-default), `wedgeBottomWidth` 40 % of the resolved top (7.44 mm),
-`wedgeDepth` 60 % of the inner height (40.8 mm). Explicit values override.
-Validation (wedges on): sizes non-negative, an explicit bottom <= the top, an
-explicit top < cell X span − 2·max(wall, 1) so a post remains between
-neighbouring wedges and at the ends, depth <= inner height. Dividers
-between stacks (parallel to Y) are full height unless `dividerHeight` (group
-"Repeat", shown with more than one column) lowers them. `keepOut`: one rect per
-cell cavity, `exposedHeight - lipH` high, for the standing cards.
+(group "Wedge"): a trapezoid cut from the top of a wall, through the wall and
+the lip on outer walls (an XZ or YZ polygon extruded and rotated into place).
+`wedges` (boolean, default true) switches them on; `wedgeWalls` ("Wedged
+walls", select, shown when on) picks the grip:
+
+* `ends` (default, "End walls and dividers: pinch across the stack"): one
+  wedge in every wall perpendicular to the stack, i.e. the outer end walls at
+  X = 0 and X = max and every divider, centred on the cell's Y range (the card
+  width). Fingers grab the stack by its first and last card. Framework
+  convention: a cell cuts its left side only when outer, its right side
+  always, so each divider is cut once (thickness `frame.sides`). On a lowered
+  divider (`dividerHeight`) the cut starts at the divider top and its depth is
+  clamped to leave max(wall, 1) of divider above the floor (skipped if nothing
+  remains to cut).
+* `long` ("Long walls: pinch across the card width"): one wedge in each of the
+  two long outer walls (front and back, parallel to X), one pair per cell,
+  centred on the cell's X range. Fingers grab the cards by their edges.
+* `both`: both sets.
+
+The three sizes are shown only when wedges are on and default to 0 = auto,
+relative to the span of the wall the wedge is cut from: `wedgeTopWidth` 60 %
+of the cell Y span for `ends` (cardWidth + 2c; 39.3 mm by default) and of the
+cell X span for `long` (stackHeight + c; 18.6 mm), `wedgeBottomWidth` 40 % of
+the resolved top (15.72 / 7.44 mm), `wedgeDepth` 60 % of the inner height
+(40.8 mm). Explicit values override (one value for both sets). Mini-map: one
+notch rect per cut wall, top width x that wall's thickness. Validation (wedges
+on): sizes non-negative, an explicit bottom <= the (smallest) top in use, an
+explicit top < span − 2·max(wall, 1) for every wall set in use (Y span for
+`ends`, X span for `long`) so a post remains beside the wedges, depth <= inner
+height. Dividers between stacks (parallel to Y) are full height unless
+`dividerHeight` (group "Repeat", shown with more than one column) lowers them.
+`keepOut`: one rect per cell cavity, `exposedHeight - lipH` high, for the
+standing cards.
 
 ### 3. `card-tray-tilted` — Card tray (tilted dispenser)
 
-Cell tilted by `tiltAngle` (default 15, 5 to 40) about Y: the cards lean back
-onto the back wall (the wall at X = 0) and are drawn from the front (+X).
-Params in group "Dispenser": `tiltAngle`, `exposedHeight` (20), `frontHeight`
-(20). With T = stackHeight + c and theta = tiltAngle:
+A card display: slots stepped one behind the other along X, every stack
+leaning back by `tiltAngle` (default 15, 5 to 40) towards X = 0; cell 0 is at
+the back, the front deck is drawn from the front (+X). Params in group
+"Dispenser": `tiltAngle`, `exposedHeight` (20), `frontHeight` (20); group
+"Repeat": `columns`, `dividerThickness` t, `dividerHeight` (shown with more
+than one column). With T = stackHeight + c and θ = tiltAngle:
 
 * inner height `H = (cardHeight - exposedHeight)·cos θ`, slot width
-  `s = T / cos θ` (horizontal), back face `x_back(z) = wall + (H - z)·tan θ`,
-  cell width `H·tan θ + s`, cell depth `cardWidth + 2c`.
-* The slot is the box `T x (cardWidth + 2c) x L` rotated by -theta about Y
-  with its lowest corner at `(x_back(0), y, floorZ)`, so its floor is tilted
+  `s = T / cos θ` (horizontal), pitch `s + t / cos θ`, back face of slot i
+  `x_back_i(z) = wall + i·pitch + (H - z)·tan θ`, cell width (axis-aligned
+  bounding box) `H·tan θ + s`, cell depth `cardWidth + 2c` (one lane, no
+  repeat along Y). Outer width `2·wall + (n - 1)·pitch + H·tan θ + s`; the
+  pitch is smaller than the cell width, the cells overlap in bounding box but
+  not in volume (`straightDividers: false`, explicit `pitchX`). Default
+  (15°): 52.89 x 68.7 mm for 1 column, 119.57 x 68.7 mm for 3 (pitch 33.34).
+* Each slot is the box `T x (cardWidth + 2c) x L` rotated by -θ about Y
+  with its lowest corner at `(x_back_i(0), y, floorZ)`, so its floor is tilted
   too. It is not clipped above the wall top: with a stacking lip and a steep
-  tilt (`lipH·tan θ > wall/2`) it notches the back lip where the cards lean
-  over it.
-* **Front opening**: everything in front of the slot's front-face plane above
-  `floorZ + frontHeight` is removed, within the cell's Y range only (flush at
-  dividers and side walls), through the front outer wall and lip. Below
-  `frontHeight` the front holds the stack.
-* Repeats along Y (rows, lanes side by side) with straight dividers parallel to
-  X (`straightDividers` true; `dividerHeight` available). Not along X.
-* `keepOut`: height `exposed·cos θ + stackHeight·sin θ - lipH` (the front
-  card's top corner stands higher on the tilted floor), x from
-  `wall - exposed·sin θ` (may be negative local x: cards overhang the back) to
-  `wall + s` per lane. `keepOutViolations` checks the overhang;
+  tilt (`lipH·tan θ > wall/2`) slot 0 notches the back lip where the cards
+  lean over it.
+* **Tilted dividers**: between slot i's front face and slot i + 1's back face
+  stands a divider t thick perpendicular to the cards (t / cos θ
+  horizontally), full height by default. `dividerHeight` (0 = full, validated
+  0..H) lowers every tilted divider: cell i cuts the slab between those two
+  planes above `floorZ + dividerHeight`, clipped to the inner lane, so the
+  side walls, back and front wall and the lip are never touched. Trade-off:
+  full dividers keep every deck upright on its own divider and the decks apart,
+  but only the top `exposedHeight` of each is reachable; lowered to about
+  `frontHeight` the tray becomes a terraced display where each deck leans on
+  the deck behind it (more of each card visible and easier to grab, but pulling
+  a card drags on the deck in front and the decks are no longer held apart).
+* **Front opening** (last cell only): everything in front of slot n - 1's
+  front-face plane above `floorZ + frontHeight` is removed, within the lane's
+  Y range only (flush at the side walls), through the front outer wall and
+  lip. Below `frontHeight` the front holds the stack. Interior slots have no
+  opening: their divider is in front of them.
+* Mini-map: per slot a `cavity` rect for its top opening (x_back_i(H) to
+  x_back_i(H) + s; for the last slot up to where the front opening meets the
+  shelf, since the slot is open from above there), a `divider` rect per tilted
+  divider at the wall top (t / cos θ wide; the framework draws none with
+  `straightDividers: false`), and for the last slot the `solid` shelf and the
+  `notch` in the front wall.
+* `keepOut`: per slot, height `exposed·cos θ + stackHeight·sin θ - lipH` (the
+  front card's top corner stands higher on the tilted floor), x from
+  `x_back_i(H) - exposed·sin θ` to `x_back_i(H) + s`. For slot 0 that may be
+  negative local x (cards overhang the back); slots i > 0 overhang the
+  previous slot of the same part. `keepOutViolations` checks the overhang;
   `itemsOutsideUsable` ignores keep-outs.
-* **Bearing areas** are a wrapper around the framework's: the front opening is
-  subtracted from each, a `low` shelf at `frontHeight` is added, and the back
-  lip piece the slot notches becomes `low`.
+* **Bearing areas** wrap the framework's (outer ring only, no dividers with
+  `straightDividers: false`): the last slot's front opening is subtracted, a
+  `low` shelf at `frontHeight` is added, every tilted divider top is added
+  (`bearing` at the wall top, `low` at `floorZ + dividerHeight` when lowered;
+  x range as in the mini-map at that height), and the back lip piece slot 0
+  notches becomes `low`.
 * **Chiral**: the cards always lean towards -X (-y at rotation 90), the mirror
   image is a different part; see DESIGN.md §4.1 and the assembly-view question
   in `docs-box-design-ideas.md`.
-* Validation: tilt range, `exposedHeight < cardHeight`, `0 <= frontHeight < H`.
+* Validation: tilt range, `exposedHeight < cardHeight`, `0 <= frontHeight < H`,
+  divider thickness > 0 with more than one column, divider height in 0..H.
+* Earlier versions repeated lanes along Y (`rows`); an old `rows` value is now
+  ignored (one lane).
 
 ### 4. `item-tray` — Item tray
 
 Cell: `innerWidth` 40 x `innerDepth` 30 x `innerHeight` 20 (group "Size"),
-repeats along X and Y (`tilingParams('xy')`; `dividerHeight` shown with more
-than one cell, 0 = full). `floorShape` (group "Floor"): `flat` (default) or
-`scoop`. **Scoop**: concave fillet of radius `scoopRadius` (default 10, clamped
-to <= innerHeight and <= half the span across the scooped walls) between the
-floor and two opposite walls chosen by `scoopSides`: `long` (default; the two
-walls along the longer inner side) or `short`. Cell cutter = cavity box minus the
-fillet material (a bar r x r along the wall minus a cylinder of radius r at
-height `floorZ + r`, r from the wall). Every cell gets its own scoops. No
-finger notches.
+repeats along X and Y (`tilingParams('xy')`). Dividers are always full height
+(no `dividerHeight`; an old file's value is ignored). `floorShape` (group
+"Floor"): `flat` (default) or `scoop`. **Scoop**: a shallow trough between two
+opposite walls chosen by `scoopSides`: `long` (default; the two walls along the
+longer inner side) or `short`. Across the span w between those walls the floor
+is one circular segment (axis parallel to the scoop walls, centred across the
+cell), at `floorZ` in the middle and rising `scoopRise` h (default 3 mm, min
+0.2, validated 0 < h < innerHeight) at the walls, radius
+R = (w²/4 + h²) / (2h) (39 mm for the default 40 x 30 cell). Small items slide
+to the middle. The raised material belongs to the floor: the outer height is
+unchanged and the usable depth at the scoop walls is innerHeight − h. Cell
+cutter = an extruded profile (the arc sampled every <= 0.5 mm, then straight up
+through the lip), equivalent to cavity box from `floorZ + h` ∪ (cylinder ∩
+cavity box). Every cell gets its own trough. No finger notches.
 
 ## Conventions
 
@@ -210,7 +269,7 @@ finger notches.
 * Tests per type in `src/boxes/boxes.test.ts` style (valid manifold, bounds =
   footprint, draw inside footprint, default params validate clean) plus
   type‑specific checks (cell count ↔ volume, gap goes into the floor, wedge
-  removes material, tilted slot bounds, scoop reduces cavity volume, tiled
+  removes material, tilted slot bounds, trough adds the raised volume, tiled
   footprint arithmetic, divider rects). `tiling.test.ts` for the framework.
 * Register in `src/boxes/index.ts`; palette order: item‑tray,
   card‑tray‑flat, card‑tray‑upright, card‑tray‑tilted, spacer, platform.
@@ -229,8 +288,10 @@ finger notches.
 
 ## Open points for the user
 
-* **Repeat axis per type.** Flat and upright repeat along X, tilted along Y.
-  Is an X-tiled stepped dispenser (lanes side by side across the width) wanted?
+* **Repeat axis per type.** All three card trays now repeat along X; the
+  tilted tray as stepped slots one behind the other (built 2026-11-06, replacing
+  the lanes along Y). Open: should a lowered divider default to `frontHeight`
+  (terraced display) instead of full height?
 * **Wedges in the long walls vs. in the dividers.** Upright wedges are cut only
   in the two outer long walls; dividers (parallel to Y) have none.
 * **Scoop next to a lowered divider** can stand higher than the divider; there

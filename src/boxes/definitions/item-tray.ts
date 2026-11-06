@@ -1,6 +1,6 @@
 import type { BoxTypeDefinition } from '../types';
 import type { ResolvedItem } from '../../model/types';
-import type { GeometryKernel, Solid } from '../../geometry/types';
+import type { GeometryKernel, Solid, Vec2 } from '../../geometry/types';
 import {
   EPS,
   num,
@@ -12,7 +12,6 @@ import {
   str,
 } from './common';
 import {
-  dividerHeightParam,
   tiledBaseFeatures,
   tiledBearingAreas,
   tiledBuild,
@@ -43,9 +42,9 @@ function scoopAxis(width: number, depth: number, sides: ScoopSides): { axis: 'x'
   return alongX ? { axis: 'x', span: depth } : { axis: 'y', span: width };
 }
 
-/** Scoop radius actually used: ≤ inner height and ≤ half the span across, never negative. */
-function clampRadius(r: number, height: number, span: number): number {
-  return Math.max(0, Math.min(r, height, span / 2));
+/** Radius of the circular segment spanning `w` across that rises `h` at its ends. */
+export function troughRadius(w: number, h: number): number {
+  return (w * w) / 4 / (2 * h) + h / 2;
 }
 
 function geom(item: ResolvedItem) {
@@ -54,49 +53,49 @@ function geom(item: ResolvedItem) {
   const width = num(item, 'innerWidth');
   const depth = num(item, 'innerDepth');
   const height = num(item, 'innerHeight');
-  const rRaw = num(item, 'scoopRadius', 10);
+  const riseRaw = num(item, 'scoopRise', 3);
   const { axis, span } = scoopAxis(width, depth, scoopSides);
-  const r = floorShape === 'scoop' ? clampRadius(rRaw, height, span) : 0;
-  return { floorShape, scoopSides, width, depth, height, rRaw, r, axis };
+  // Rise actually built: 0 (flat) unless scoop; never above the inner height.
+  const rise = floorShape === 'scoop' && riseRaw > 0 ? Math.min(riseRaw, height) : 0;
+  return { floorShape, scoopSides, width, depth, height, riseRaw, rise, axis, span };
 }
 
 /**
- * Concave fillets of radius `r` between the cell floor and the two walls
- * running along `axis`: per wall a bar r × r in the floor corner minus a
- * cylinder whose axis lies along the wall at height floorZ + r, r from the
- * wall. The bars overshoot the cavity by EPS (they are only subtracted from
- * the cavity cutter, so overshoot never touches the part).
+ * Cavity of one cell with a trough floor: the cross-section across the two
+ * scoop walls is bounded below by a circular arc (radius `troughRadius(span,
+ * rise)`, axis parallel to the scoop walls, centred across the cell) that
+ * touches floorZ in the middle and meets the walls at floorZ + rise; above
+ * it the section is the full cell span up through the lip. Built as an
+ * extruded profile (the arc sampled every ≤ 0.5 mm, a vertex at the lowest
+ * point) rather than cylinder ∩ box: same shape, no facets outside the span.
  */
-function scoopFillets(kernel: GeometryKernel, f: CellFrame, axis: 'x' | 'y', r: number): Solid[] {
-  const zc = f.floorZ + r;
-  const zb = f.floorZ - EPS;
-  if (axis === 'x') {
-    const len = f.width + 4 * EPS;
-    const x0 = f.x - 2 * EPS;
-    const cyl = kernel.rotate(kernel.cylinder(r, len + 2 * EPS), [0, 90, 0]);
-    return [
-      kernel.difference(kernel.box(len, r + EPS, r + EPS, [x0, f.y - EPS, zb]), [kernel.translate(cyl, [x0 - EPS, f.y + r, zc])]),
-      kernel.difference(kernel.box(len, r + EPS, r + EPS, [x0, f.y + f.depth - r, zb]), [
-        kernel.translate(cyl, [x0 - EPS, f.y + f.depth - r, zc]),
-      ]),
-    ];
+function troughCavity(kernel: GeometryKernel, f: CellFrame, axis: 'x' | 'y', rise: number): Solid {
+  const span = axis === 'x' ? f.depth : f.width;
+  const len = axis === 'x' ? f.width : f.depth;
+  const R = troughRadius(span, rise);
+  const n = 2 * Math.max(16, Math.ceil(span / 2 / 0.5)); // even: the middle is a vertex
+  const profile: Vec2[] = [];
+  for (let i = 0; i <= n; i++) {
+    const u = (span * i) / n;
+    const d = u - span / 2;
+    profile.push([u, R - Math.sqrt(Math.max(0, R * R - d * d))]);
   }
-  const len = f.depth + 4 * EPS;
-  const y0 = f.y - 2 * EPS;
-  const cyl = kernel.rotate(kernel.cylinder(r, len + 2 * EPS), [-90, 0, 0]);
-  return [
-    kernel.difference(kernel.box(r + EPS, len, r + EPS, [f.x - EPS, y0, zb]), [kernel.translate(cyl, [f.x + r, y0 - EPS, zc])]),
-    kernel.difference(kernel.box(r + EPS, len, r + EPS, [f.x + f.width - r, y0, zb]), [
-      kernel.translate(cyl, [f.x + f.width - r, y0 - EPS, zc]),
-    ]),
-  ];
+  const top = f.height + f.lipH + EPS;
+  profile.push([span, top], [0, top]);
+  const prism = kernel.extrude(profile, len); // local: u across, v up, extrusion along the trough
+  if (axis === 'x') {
+    // local (u, v, t) → (t, u, v)
+    return kernel.translate(kernel.rotate(prism, [90, 0, 90]), [f.x, f.y, f.floorZ]);
+  }
+  // local (u, v, t) → (u, −t, v)
+  return kernel.translate(kernel.rotate(prism, [90, 0, 0]), [f.x, f.y + len, f.floorZ]);
 }
 
 /**
  * Tiling spec of an item tray: one cell = innerWidth × innerDepth ×
- * innerHeight, repeated columns × rows. The cell cutter is the cavity box
- * (through the lip), minus the scoop fillets for a scoop floor. No finger
- * notches: the scoop is the access feature.
+ * innerHeight, repeated columns × rows. Dividers are always full height. The
+ * cell cutter is the cavity box (through the lip), or for a scoop floor the
+ * trough cavity. No finger notches: the trough is the access feature.
  */
 function spec(item: ResolvedItem): TiledBoxSpec {
   const g = geom(item);
@@ -107,11 +106,9 @@ function spec(item: ResolvedItem): TiledBoxSpec {
     wall: item.wall,
     floor: item.floor,
     stacking: stacking(item),
-    dividerHeight: num(item, 'dividerHeight'),
     cellCutters(kernel, f) {
-      const cavity = kernel.box(f.width, f.depth, f.height + f.lipH + EPS, [f.x, f.y, f.floorZ]);
-      if (!(g.r > 0)) return [cavity];
-      return [kernel.difference(cavity, scoopFillets(kernel, f, g.axis, g.r))];
+      if (g.rise > 0) return [troughCavity(kernel, f, g.axis, g.rise)];
+      return [kernel.box(f.width, f.depth, f.height + f.lipH + EPS, [f.x, f.y, f.floorZ])];
     },
     cellDraw(f) {
       return [{ kind: 'rect', role: 'cavity', x: f.x, y: f.y, w: f.width, h: f.depth }];
@@ -122,7 +119,7 @@ function spec(item: ResolvedItem): TiledBoxSpec {
 export const itemTray: BoxTypeDefinition = {
   id: 'item-tray',
   name: 'Item tray',
-  description: 'Small tray for tokens and bits: a grid of equal cells with a flat or scooped floor.',
+  description: 'Small tray for tokens and bits: a grid of equal cells with a flat floor or a shallow trough floor.',
   params: [
     { key: 'innerWidth', label: 'Cell width', kind: 'number', default: 40, min: 1, step: 0.5, unit: 'mm', group: 'Size',
       help: 'Inner width of one cell.' },
@@ -130,7 +127,6 @@ export const itemTray: BoxTypeDefinition = {
       help: 'Inner depth of one cell.' },
     { key: 'innerHeight', label: 'Inner height', kind: 'number', default: 20, min: 1, step: 0.5, unit: 'mm', group: 'Size' },
     ...tilingParams('xy'),
-    { ...dividerHeightParam, visibleIf: (p) => Number(p.columns) > 1 || Number(p.rows) > 1 },
     {
       key: 'floorShape',
       label: 'Floor',
@@ -138,7 +134,7 @@ export const itemTray: BoxTypeDefinition = {
       default: 'flat',
       options: [
         { value: 'flat', label: 'Flat' },
-        { value: 'scoop', label: 'Scoop (rounded into two walls)' },
+        { value: 'scoop', label: 'Scoop (shallow trough between two walls)' },
       ],
       group: 'Floor',
     },
@@ -152,19 +148,19 @@ export const itemTray: BoxTypeDefinition = {
         { value: 'short', label: 'Short walls' },
       ],
       group: 'Floor',
-      help: 'The two opposite walls of each cell the floor curves up into.',
+      help: 'The two opposite walls of each cell the floor curves up toward.',
       visibleIf: (p) => p.floorShape === 'scoop',
     },
     {
-      key: 'scoopRadius',
-      label: 'Scoop radius',
+      key: 'scoopRise',
+      label: 'Rise at the walls',
       kind: 'number',
-      default: 10,
-      min: 0.5,
+      default: 3,
+      min: 0.2,
       step: 0.5,
       unit: 'mm',
       group: 'Floor',
-      help: 'Clamped to the inner height and to half the cell span across the scooped walls.',
+      help: 'How much the floor curves up at the two scoop walls (lowest in the middle of the cell).',
       visibleIf: (p) => p.floorShape === 'scoop',
     },
     ...stackingParams,
@@ -181,7 +177,11 @@ export const itemTray: BoxTypeDefinition = {
     requirePositive(problems, 'Cell width', g.width);
     requirePositive(problems, 'Cell depth', g.depth);
     requirePositive(problems, 'Inner height', g.height);
-    if (g.floorShape === 'scoop') requirePositive(problems, 'Scoop radius', g.rRaw);
+    if (g.floorShape === 'scoop') {
+      requirePositive(problems, 'Rise at the walls', g.riseRaw);
+      if (g.riseRaw >= g.height && g.height > 0)
+        problems.push(`Rise at the walls (${g.riseRaw} mm) must be less than the inner height (${g.height} mm).`);
+    }
     tiledValidate(problems, spec(item));
     return problems;
   },

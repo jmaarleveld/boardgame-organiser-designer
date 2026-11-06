@@ -92,8 +92,15 @@ describe('stack fit: bearing on open trays', () => {
     const items = stack([it_('div', 'item-tray', 1, 1, div), it_('box', 'item-tray', 62.6, 42.6)], 1);
     expect(items[1].z).toBeCloseTo(31.2, 9);
     expect(issuesOf(items)).toEqual([]);
-    // Low dividers carry nothing.
-    const low = stack([it_('div', 'item-tray', 1, 1, { ...div, dividerHeight: 20 }), it_('box', 'item-tray', 62.6, 42.6)], 1);
+    // Low dividers carry nothing (the upright card tray is the type that can lower its dividers).
+    const low = stack(
+      [
+        // Three 58.4 × 40 slots along X; the box sits inside the middle slot's Y span and only over a low divider in X.
+        it_('div', 'card-tray-upright', 1, 1, { columns: 3, dividerHeight: 20, stackHeight: 58.4, clearance: 0, cardWidth: 40, cardHeight: 30, exposedHeight: 0, wedges: false, dividerThickness: 1.6 }),
+        it_('box', 'item-tray', 62.6, 10.6, { innerDepth: 20 }),
+      ],
+      1,
+    );
     expect(issuesOf(low).map((i) => i.message)).toEqual([
       'BOX rests on nothing: it hangs over the open cavity of DIV. Move it so it reaches the walls of DIV, or put a platform under it.',
     ]);
@@ -187,9 +194,6 @@ describe('stack fit: plugs and corner stops', () => {
       'HI: its plug does not fit into LO: it hits the dividers of LO. A plug needs an empty cavity below. Move HI so its plug drops into an open cavity, or give HI a base without plugs.',
     ]);
     expect(s.issues[0]).toMatchObject({ severity: 'error', kind: 'stack-fit', itemIds: ['hi', 'lo'] });
-    // Dividers well below the plug are fine.
-    const low = stack([it_('lo', 'item-tray', 1, 1, { ...cells, dividerHeight: 10 }), it_('hi', 'item-tray', 1, 1, PLUG)], 1);
-    expect(issuesOf(low)).toEqual([]);
   });
 
   it('a plug on a spacer or a flat platform has no cavity (error); so do corner stops', () => {

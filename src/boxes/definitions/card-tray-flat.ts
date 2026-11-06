@@ -5,6 +5,7 @@ import {
   cardDims,
   cardParams,
   EPS,
+  MIN_RECESS_WALL,
   num,
   requirePositive,
   round,
@@ -46,9 +47,23 @@ function geom(item: ResolvedItem) {
   };
 }
 
-/** How far the cavity floor is raised above the structural floor: the groove depth, 0 without gaps. */
+/** How far the cavity floor is raised above the groove floor: the groove depth, 0 without gaps. */
 function raisedBy(g: ReturnType<typeof geom>): number {
   return g.gapWidth > 0 ? Math.max(0, g.gapFloorDepth) : 0;
+}
+
+/**
+ * Thickness of the slab under the groove (groove bottom height above the
+ * outer bottom): the structural `floor`, but with a recessed base at least
+ * the recess depth plus MIN_RECESS_WALL, so the recess ring (cut from the
+ * outer bottom edge, up to `recessDepth`) never meets the gap / groove under
+ * the outer wall and leaves a slit through the outside skin. Only applies when
+ * the floor is raised at all (gaps on).
+ */
+function grooveFloorOf(item: ResolvedItem, g: ReturnType<typeof geom>): number {
+  if (g.gapWidth <= 0) return item.floor;
+  const st = stacking(item);
+  return st.recessDepth > 0 ? Math.max(item.floor, st.recessDepth + MIN_RECESS_WALL) : item.floor;
 }
 
 type Side = 'left' | 'right' | 'front' | 'back';
@@ -132,8 +147,8 @@ function grooveRects(f: CellFrame, side: Side, width: number, reach: number) {
  * Finger gap cutter: a plain rectangular slot through the wall thickness,
  * from above the wall top (and lip) down to `floorDepth` below the cavity
  * floor, so it continues into the floor as a groove of the same width. The
- * cavity floor is raised by exactly `floorDepth` above the structural floor
- * (see `spec`), so the groove bottom is the structural floor top and the
+ * cavity floor is raised by exactly `floorDepth` above the groove floor
+ * (see `spec`), so the groove bottom is the groove floor top and the
  * groove never breaks through. The groove runs under the wall and `reach` mm
  * into the cavity (both cavities on a shared divider, each clamped to the
  * cell span), so a fingertip gets under the edge of the last card. It
@@ -163,11 +178,13 @@ function gapCutter(kernel: GeometryKernel, f: CellFrame, side: Side, width: numb
  * Tiling spec: one cell holds a face‑up card stack, cardWidth + 2c (X) ×
  * cardHeight + 2c (Y) × stackHeight (Z), repeated along X (columns).
  *
- * The floor slab is `floor + gapFloorDepth` thick: the cavity floor sits at
- * plugH + floor + gapFloorDepth and the finger-gap groove is cut from there
- * down to the structural floor, leaving `floor` mm under it. Passing the
- * thicker slab as the spec's floor makes the frames, outer block, bearing
- * areas and base features follow; outer height = plugH + floor +
+ * The floor slab is `grooveFloor + gapFloorDepth` thick: the cavity floor sits
+ * at plugH + grooveFloor + gapFloorDepth and the finger-gap groove is cut from
+ * there down to the groove floor, leaving `grooveFloor` mm under it.
+ * grooveFloor is `floor`, or with a recessed base max(floor, recessDepth +
+ * MIN_RECESS_WALL) so material remains above the recess under the gap.
+ * Passing the thicker slab as the spec's floor makes the frames, outer block,
+ * bearing areas and base features follow; outer height = plugH + grooveFloor +
  * gapFloorDepth + stackHeight + lipH. Without gaps (gapWidth 0) the floor is
  * not raised.
  */
@@ -178,7 +195,7 @@ function spec(item: ResolvedItem): TiledBoxSpec {
     ...tilingOf(item, 'x'),
     cell: { width: g.width, depth: g.depth, height: g.height },
     wall: item.wall,
-    floor: item.floor + raisedBy(g),
+    floor: grooveFloorOf(item, g) + raisedBy(g),
     stacking: stacking(item),
     cellCutters(kernel, f) {
       const out: Solid[] = [kernel.box(f.width, f.depth, f.height + f.lipH + EPS, [f.x, f.y, f.floorZ])];
@@ -225,7 +242,7 @@ export const cardTrayFlat: BoxTypeDefinition = {
       step: 0.1,
       unit: 'mm',
       group: 'Finger gaps',
-      help: 'How far the gap continues into the floor (under the wall) so a finger gets under the last card. The floor is raised by this much so the groove never breaks through.',
+      help: 'How far the gap continues into the floor (under the wall) so a finger gets under the last card. The floor is raised by this much so the groove never breaks through; with a recessed base the slab under the groove is also at least the recess depth + 0.4 mm, so the recess never meets the gap.',
     },
     {
       key: 'gapReach',
