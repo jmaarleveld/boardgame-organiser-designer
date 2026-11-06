@@ -14,3 +14,9 @@
 .assembly.assembly-large { flex: 1; height: auto; min-height: 0; }
 .assembly.assembly-large .assembly-controls { left: auto; right: 6px; }
 .assembly .assembly-status { top: auto; bottom: 6px; right: 6px; }
+.assembly-presets { display: flex; gap: 0; }
+.assembly-presets button { border-radius: 0; margin-left: -1px; }
+.assembly-presets button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+.assembly-presets button:last-child { border-radius: 0 4px 4px 0; }
+.assembly-presets button.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+.assembly-canvas canvas { touch-action: none; }
