@@ -16,6 +16,7 @@ import type { MeshData } from '../geometry/types';
 import type { BoxDimensions } from '../model/types';
 import type { Rect } from '../model/layout';
 import type { ItemTint } from './assemblyScene';
+import { MeshGeometryCache } from './meshGeometry';
 import {
   DEFAULT_VIEW_ORIENTATION,
   clientToNdc,
@@ -91,6 +92,9 @@ const COLORS: Record<ItemTint, number> = {
   floating: 0x9cc8f0, // stacked but not fully supported, or may tip
 };
 const SELECT_COLOR = 0x2563eb;
+/** Feature‑edge overlay colours (see meshGeometry.ts for why the edges exist). */
+const EDGE_COLOR = 0x3d3628;
+const EDGE_SELECTED_COLOR = 0x1e3a8a;
 const FOV = 35;
 
 export interface AssemblySceneOptions {
@@ -153,27 +157,38 @@ export function createAssemblyScene(host: HTMLDivElement, opts: AssemblySceneOpt
         opacity: faded ? (placeholder ? 0.14 : 0.2) : placeholder ? 0.4 : 1,
         depthWrite: !see,
         side: see ? THREE.DoubleSide : THREE.FrontSide,
+        // Push the faces back a little so the edge overlay on them does not z‑fight.
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1,
       });
       materials.set(k, m);
     }
     return m;
   }
 
-  const geometries = new Map<MeshData, THREE.BufferGeometry>();
-  function geometryFor(data: MeshData): THREE.BufferGeometry {
-    let g = geometries.get(data);
-    if (!g) {
-      g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
-      g.setIndex(new THREE.BufferAttribute(data.indices, 1));
-      g.computeVertexNormals();
-      g.computeBoundingSphere();
-      geometries.set(data, g);
+  /** Edge overlay material: darker lines, faded together with their mesh. */
+  const edgeMaterials = new Map<string, THREE.LineBasicMaterial>();
+  function edgeMaterial(selected: boolean, faded: boolean): THREE.LineBasicMaterial {
+    const k = `${selected}|${faded}`;
+    let m = edgeMaterials.get(k);
+    if (!m) {
+      m = new THREE.LineBasicMaterial({
+        color: selected ? EDGE_SELECTED_COLOR : EDGE_COLOR,
+        transparent: true,
+        opacity: faded ? 0.12 : selected ? 0.8 : 0.55,
+        depthWrite: false,
+      });
+      edgeMaterials.set(k, m);
     }
-    return g;
+    return m;
   }
 
+  /** Face + edge geometry per MeshData (i.e. per geometry key of the mesh cache). */
+  const geometries = new MeshGeometryCache();
+
   const objects = new Map<string, THREE.Mesh>();
+  const edgeLines = new Map<string, THREE.LineSegments>();
   const tmp = new THREE.Matrix4();
   const scaleM = new THREE.Matrix4();
 
@@ -191,20 +206,35 @@ export function createAssemblyScene(host: HTMLDivElement, opts: AssemblySceneOpt
         itemGroup.add(obj);
         objects.set(e.id, obj);
       }
+      // Edge overlay: a child of the item mesh, so it follows its matrix (moves,
+      // exploded view); picking is non‑recursive, so it is never hit.
+      let lines = edgeLines.get(e.id);
+      if (!lines) {
+        lines = new THREE.LineSegments(unitEdges);
+        lines.matrixAutoUpdate = false;
+        obj.add(lines);
+        edgeLines.set(e.id, lines);
+      }
       const h = Math.max(e.size.height, 0.5);
       tmp.fromArray(e.matrix);
       if (e.mesh) {
         usedMeshes.add(e.mesh);
-        obj.geometry = geometryFor(e.mesh);
+        const g = geometries.get(e.mesh);
+        obj.geometry = g.mesh;
+        lines.geometry = g.edges;
         obj.matrix.copy(tmp);
       } else {
         obj.geometry = unitBox;
+        lines.geometry = unitEdges;
         obj.matrix.copy(tmp).multiply(scaleM.makeScale(e.size.width, e.size.depth, h));
       }
-      obj.material = material(e.tint, e.selected, !e.mesh, !!e.faded && !e.selected);
-      obj.userData.faded = !!e.faded && !e.selected;
+      const faded = !!e.faded && !e.selected;
+      obj.material = material(e.tint, e.selected, !e.mesh, faded);
+      lines.material = edgeMaterial(e.selected, faded);
+      obj.userData.faded = faded;
       // Translucent items draw after the solid ones.
-      obj.renderOrder = obj.userData.faded ? 2 : 0;
+      obj.renderOrder = faded ? 2 : 0;
+      lines.renderOrder = obj.renderOrder;
       obj.matrixWorldNeedsUpdate = true;
       if (e.selected) {
         outline.matrix.copy(tmp).multiply(scaleM.makeScale(e.size.width, e.size.depth, h));
@@ -216,12 +246,9 @@ export function createAssemblyScene(host: HTMLDivElement, opts: AssemblySceneOpt
       if (seen.has(id)) continue;
       itemGroup.remove(obj);
       objects.delete(id);
+      edgeLines.delete(id);
     }
-    for (const [data, g] of geometries) {
-      if (usedMeshes.has(data)) continue;
-      g.dispose();
-      geometries.delete(data);
-    }
+    geometries.retain(usedMeshes);
     render();
   }
 
@@ -442,6 +469,7 @@ export function createAssemblyScene(host: HTMLDivElement, opts: AssemblySceneOpt
           placeholder: obj.geometry === unitBox,
           faded: !!obj.userData.faded,
           color: `#${(obj.material as THREE.MeshStandardMaterial).color.getHexString()}`,
+          edgeSegments: (edgeLines.get(id)?.geometry.getAttribute('position')?.count ?? 0) / 2,
           x: r(b.min.x), y: r(b.min.y), z: r(b.min.z), width: r(b.max.x - b.min.x), depth: r(b.max.y - b.min.y), height: r(b.max.z - b.min.z),
           screen: { x: rect.left + ((top.x + 1) / 2) * rect.width, y: rect.top + ((1 - top.y) / 2) * rect.height },
         };
@@ -485,9 +513,9 @@ export function createAssemblyScene(host: HTMLDivElement, opts: AssemblySceneOpt
       dom.removeEventListener('pointerup', onUp);
       disposeControls(controls);
       clearBox();
-      for (const g of geometries.values()) g.dispose();
-      geometries.clear();
+      geometries.dispose();
       for (const m of materials.values()) m.dispose();
+      for (const m of edgeMaterials.values()) m.dispose();
       for (const m of Object.values(boxMaterials)) m.dispose();
       (outline.material as THREE.Material).dispose();
       unitEdges.dispose();

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { Preview3DProps } from '../services/contracts';
+import { meshEdges, meshGeometry } from './meshGeometry';
 import './preview.css';
 
 interface Scene3D {
@@ -37,8 +38,20 @@ function createScene(host: HTMLDivElement): Scene3D {
   (grid.material as THREE.Material).opacity = 0.35;
   scene.add(grid);
 
-  const material = new THREE.MeshStandardMaterial({ color: 0x4f8fd6, flatShading: true, roughness: 0.65, metalness: 0.05 });
+  const material = new THREE.MeshStandardMaterial({
+    color: 0x4f8fd6,
+    flatShading: true,
+    roughness: 0.65,
+    metalness: 0.05,
+    // Keep the faces behind the edge overlay (no z‑fighting).
+    polygonOffset: true,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits: 1,
+  });
+  // Crease edges: make steps between parallel faces (floor grooves, ridges) visible.
+  const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x0d1f35, transparent: true, opacity: 0.85 });
   let mesh: THREE.Mesh | null = null;
+  let edges: THREE.LineSegments | null = null;
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = false;
@@ -51,14 +64,17 @@ function createScene(host: HTMLDivElement): Scene3D {
       mesh.geometry.dispose();
       mesh = null;
     }
+    if (edges) {
+      scene.remove(edges);
+      edges.geometry.dispose();
+      edges = null;
+    }
     if (!data) { render(); return; }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
-    geo.setIndex(new THREE.BufferAttribute(data.indices, 1));
-    geo.computeVertexNormals();
-    geo.computeBoundingBox();
+    const geo = meshGeometry(data);
     mesh = new THREE.Mesh(geo, material);
     scene.add(mesh);
+    edges = new THREE.LineSegments(meshEdges(geo), edgeMaterial);
+    scene.add(edges);
 
     const box = geo.boundingBox!;
     const center = box.getCenter(new THREE.Vector3());
@@ -84,6 +100,8 @@ function createScene(host: HTMLDivElement): Scene3D {
       controls.removeEventListener('change', render);
       controls.dispose();
       if (mesh) mesh.geometry.dispose();
+      if (edges) edges.geometry.dispose();
+      edgeMaterial.dispose();
       grid.geometry.dispose();
       (grid.material as THREE.Material).dispose();
       material.dispose();
