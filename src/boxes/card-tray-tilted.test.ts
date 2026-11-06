@@ -94,7 +94,9 @@ describe('card-tray-tilted', () => {
       { stackTop: 'lip', stackBottom: 'recess', columns: 3 },
       { stackTop: 'lip', stackBottom: 'plug', columns: 3, tiltAngle: 30 },
       { columns: 3, tiltAngle: 5, overhangClearance: 0 },
-      { frontHeight: 0, columns: 2, overhangClearance: 6 },
+      { frontHeightPct: 20, columns: 2, overhangClearance: 6 },
+      { hollowFront: false, columns: 2 },
+      { frontHeightPct: 100, stackTop: 'lip', stackBottom: 'recess' },
     ] as ItemParams[]) {
       const it = item(p);
       build(it);
@@ -155,10 +157,11 @@ describe('card-tray-tilted', () => {
         expect(material(s, mid(i, g.H - 0.3), WALL / 4, FLOOR + g.H + 1.5)).toBeCloseTo(FULL, 9);
         expect(material(s, mid(i, g.H - 0.3), WALL - 0.2, FLOOR + g.H - 0.15)).toBeCloseTo(FULL, 9);
       }
-      // Front opening only at the outer front wall: open above frontHeight, closed below.
-      expect(material(s, W - WALL / 2, y, FLOOR + 22)).toBeLessThan(1e-9);
-      expect(material(s, W - WALL / 2, y, FLOOR + 18)).toBeCloseTo(FULL, 9);
-      const z = 30;
+      // Front access opening only at the front block (lane centre): open above frontHeight (50 % of H), closed below.
+      expect(g.frontHeight).toBeCloseTo(0.5 * g.H, 9);
+      expect(material(s, W - WALL / 2, y, FLOOR + g.frontHeight + 2)).toBeLessThan(1e-9);
+      expect(material(s, W - WALL / 2, y, FLOOR + g.frontHeight - 2)).toBeCloseTo(FULL, 9);
+      const z = g.frontHeight + 8; // above the front wall, below the wall top
       const xf = WALL + g.back + 2 * pitch + g.H * g.tan + g.s - z * g.tan;
       expect(material(s, xf + 0.5, y, FLOOR + z)).toBeLessThan(1e-9);
       // The outer side wall at the front stays full height.
@@ -166,7 +169,7 @@ describe('card-tray-tilted', () => {
     }
   });
 
-  it('draw: slot openings, tilted dividers, shelf and front notch inside the footprint', () => {
+  it('draw: slot openings, tilted dividers and the front opening notch inside the footprint', () => {
     const it = item({ columns: 3, wedgePlates: false });
     const g = tiltedGeom(it);
     const pitch = tiltedPitch(it);
@@ -174,7 +177,7 @@ describe('card-tray-tilted', () => {
     const feats = def.draw(it);
     const roles = (r: string) => feats.filter((f) => f.kind === 'rect' && f.role === r);
     expect(roles('cavity')).toHaveLength(3);
-    expect(roles('solid')).toHaveLength(1);
+    expect(roles('solid')).toHaveLength(0);
     expect(roles('notch')).toHaveLength(1);
     const dividers = roles('divider');
     expect(dividers).toHaveLength(2);
@@ -192,9 +195,14 @@ describe('card-tray-tilted', () => {
       expect(c.x).toBeCloseTo(WALL + g.back + i * pitch, 9);
       expect(c.w).toBeCloseTo(g.s, 9);
     }
-    // The notch is in the front outer wall.
+    // The notch spans the front block (slot front face at the wall top to the outer face), opening top wide.
     const n = roles('notch')[0];
-    if (n.kind === 'rect') expect(n.x + n.w).toBeCloseTo(fp.width, 9);
+    if (n.kind === 'rect') {
+      expect(n.x).toBeCloseTo(WALL + g.back + 2 * pitch + g.s, 9);
+      expect(n.x + n.w).toBeCloseTo(fp.width, 9);
+      expect(n.h).toBeCloseTo(g.plateWedge.top, 9);
+      expect(n.y + n.h / 2).toBeCloseTo(WALL + g.depth / 2, 9);
+    }
     for (const f of feats) {
       if (f.kind !== 'rect') continue;
       expect(f.x).toBeGreaterThanOrEqual(-1e-9);
@@ -204,7 +212,7 @@ describe('card-tray-tilted', () => {
     }
   });
 
-  it('bearing areas: the front opening carries nothing, the shelf is low', () => {
+  it('bearing areas: the front opening carries nothing, it is low at its bottom', () => {
     const it = item({ stackTop: 'lip', stackBottom: 'recess', columns: 2 });
     const g = tiltedGeom(it);
     const fp = def.footprint(it);
@@ -213,7 +221,8 @@ describe('card-tray-tilted', () => {
     const at = (x: number) => areas.filter((a) => x > a.x && x < a.x + a.width && y > a.y && y < a.y + a.depth);
     const front = at(fp.width - 0.2);
     expect(front).toHaveLength(1);
-    expect(front[0]).toMatchObject({ role: 'low', height: FLOOR + 20 });
+    expect(front[0]).toMatchObject({ role: 'low', name: 'front opening' });
+    expect(front[0].height).toBeCloseTo(FLOOR + 0.5 * g.H, 9);
     // The slot clears the back lip: still a lip; the extra back wall strip bears at the wall top.
     expect(at(0.2)).toEqual([expect.objectContaining({ role: 'lip' })]);
     expect(at(WALL + g.back / 2)).toEqual([expect.objectContaining({ role: 'bearing', name: 'back wall', height: FLOOR + g.H })]);
@@ -242,9 +251,141 @@ describe('card-tray-tilted', () => {
       expect(a.x).toBeCloseTo(WALL + g.back + i * pitch + g.s, 9);
       expect(a.width).toBeCloseTo(1.2 / g.cos, 9);
     });
-    // Only one front shelf (last cell) and one back wall strip (first cell).
-    expect(def.bearingAreas!(it).filter((a) => a.name === 'front wall')).toHaveLength(1);
+    // The front block top (last cell, split by the opening) and one back wall strip (first cell).
+    expect(def.bearingAreas!(it).filter((a) => a.name === 'front wall')).toHaveLength(2);
+    expect(def.bearingAreas!(it).filter((a) => a.name === 'front opening')).toHaveLength(1);
     expect(def.bearingAreas!(it).filter((a) => a.name === 'back wall')).toHaveLength(1);
+  });
+
+  it('front wall height as a percentage of the wall: footprint unchanged, valid for every stacking variant', () => {
+    const fp = def.footprint(item());
+    for (const frontHeightPct of [0, 30, 50, 99, 100]) {
+      const f = def.footprint(item({ frontHeightPct }));
+      expect(f.width).toBeCloseTo(fp.width, 9);
+      expect(f.depth).toBeCloseTo(fp.depth, 9);
+      expect(f.height).toBeCloseTo(fp.height, 9);
+      expect(tiltedGeom(item({ frontHeightPct })).frontHeight).toBeCloseTo((frontHeightPct / 100) * tiltedGeom(item()).H, 9);
+      for (const columns of [1, 2, 3]) {
+        for (const st of [{ stackTop: 'lip', stackBottom: 'recess' }, { stackTop: 'lip', stackBottom: 'plug' }] as ItemParams[]) {
+          for (const hollowFront of [true, false]) {
+            const it = item({ frontHeightPct, columns, hollowFront, ...st });
+            build(it);
+            // 0 % reaches the slot floor's front corner: reported, but still a valid solid.
+            expect(def.validate!(it)).toHaveLength(frontHeightPct === 0 ? 1 : 0);
+          }
+        }
+      }
+    }
+  });
+
+  /** Probe helpers for the front block of a 2-column tray with lip and recess. */
+  function front(frontHeightPct: number, extra: ItemParams = {}) {
+    const it = item({ frontHeightPct, stackTop: 'lip', stackBottom: 'recess', columns: 2, ...extra });
+    const s = build(it);
+    const g = tiltedGeom(it);
+    const fp = def.footprint(it);
+    const pitch = tiltedPitch(it);
+    const topZ = FLOOR + g.H;
+    const zb = FLOOR + g.frontHeight; // opening bottom
+    const d = g.frontOpeningDepth;
+    const tw = g.plateWedge.top / 2;
+    const bw = g.plateWedge.bottom / 2;
+    const half = (z: number) => bw + ((z - zb) / d) * (tw - bw);
+    /** Slot 1's front face at z (absolute). */
+    const xFront = (z: number) => WALL + g.back + pitch + (g.H - (z - FLOOR)) * g.tan + g.s;
+    return { it, s, g, fp, W: fp.width, yc: WALL + g.depth / 2, topZ, lipH: fp.height - topZ, zb, half, xFront, pitch };
+  }
+
+  it('front block: full height, outer wall, hollow pocket open through the side walls, slot floor intact', () => {
+    for (const pct of [50, 100]) {
+      const { s, g, fp, W, yc, topZ, lipH, xFront, pitch } = front(pct);
+      // The outer front wall away from the opening, at mid height; and its lip.
+      expect(material(s, W - 0.8, WALL + 2, FLOOR + g.H / 2)).toBeCloseTo(FULL, 9);
+      expect(material(s, W - WALL / 4, WALL + 2, topZ + lipH / 2)).toBeCloseTo(FULL, 9);
+      // The leaning plate in front of the slot: wall / cos θ thick horizontally.
+      for (const z of [FLOOR + 12, FLOOR + 20]) {
+        expect(material(s, xFront(z) + 0.3, WALL + 2, z)).toBeCloseTo(FULL, 9);
+        expect(material(s, xFront(z) + WALL / g.cos - 0.3, WALL + 2, z)).toBeCloseTo(FULL, 9);
+        expect(material(s, xFront(z) + WALL / g.cos + 0.3, WALL + 2, z)).toBeLessThan(1e-9);
+      }
+      // The pocket near the top (widest there), through both side walls; the roof above it.
+      const z = topZ - WALL - 0.5;
+      for (const y of [WALL + 2, 0.1, fp.depth - 0.1]) expect(material(s, W - WALL - 1, y, z)).toBeLessThan(1e-9);
+      expect(material(s, W - WALL - 1, WALL + 2, topZ - 0.5)).toBeCloseTo(FULL, 9);
+      // The structural floor under the pocket; the slot floor wedge at its front corner.
+      expect(material(s, W - WALL - 0.3, WALL + 2, FLOOR - 0.3)).toBeCloseTo(FULL, 9);
+      const xCorner = WALL + g.back + pitch + g.H * g.tan + g.T * g.cos;
+      expect(material(s, xCorner - 0.5, yc, FLOOR + 0.15)).toBeCloseTo(FULL, 9);
+      expect(material(s, xCorner - 0.5, yc, FLOOR + g.T * g.sin - 1)).toBeCloseTo(FULL, 9);
+    }
+    // Without hollowFront the pocket is solid; the pocket saves material.
+    const solid = front(50, { hollowFront: false });
+    expect(material(solid.s, solid.W - WALL - 1, WALL + 2, solid.topZ - WALL - 0.5)).toBeCloseTo(FULL, 9);
+    expect(k.volume(solid.s) - k.volume(front(50).s)).toBeGreaterThan(1000);
+  });
+
+  it('front at 100 %: no opening, the front wall and lip intact, bearing areas like any tray', () => {
+    const { it, s, g, fp, W, yc, topZ, lipH } = front(100);
+    expect(g.frontClosed).toBe(true);
+    expect(lipH).toBeCloseTo(2, 9);
+    expect(material(s, W - 0.8, yc, topZ - 0.5)).toBeCloseTo(FULL, 9);
+    expect(material(s, W - WALL / 4, yc, topZ + lipH / 2)).toBeCloseTo(FULL, 9);
+    // No lining at the lane centre: the pocket is open there.
+    expect(material(s, W - WALL - 1, yc, topZ - WALL - 0.5)).toBeLessThan(1e-9);
+    const areas = def.bearingAreas!(it);
+    expect(areas.filter((a) => a.role === 'low')).toEqual([]);
+    const lip = areas.filter((a) => a.role === 'lip');
+    const t = WALL / 2;
+    expect(lip.reduce((sum, a) => sum + a.width * a.depth, 0)).toBeCloseTo(fp.width * fp.depth - (fp.width - 2 * t) * (fp.depth - 2 * t), 9);
+    const fw = areas.filter((a) => a.name === 'front wall');
+    expect(fw).toHaveLength(1);
+    expect(fw[0]).toMatchObject({ role: 'bearing' });
+    expect(fw[0].height).toBeCloseTo(topZ, 9);
+    expect(fw[0].x + fw[0].width).toBeCloseTo(W - WALL, 9);
+    const feats = def.draw(item({ frontHeightPct: 100, columns: 2, wedgePlates: false }));
+    expect(feats.filter((f) => f.kind === 'rect' && (f.role === 'solid' || f.role === 'notch'))).toEqual([]);
+    expect(feats.filter((f) => f.kind === 'rect' && f.role === 'cavity')).toHaveLength(2);
+  });
+
+  it('front access opening below 100 %: open at the lane centre down to pct · H, lined pocket, low at its bottom', () => {
+    for (const pct of [30, 50, 99]) {
+      const { it, s, g, W, yc, topZ, lipH, zb, half, xFront } = front(pct);
+      expect(g.frontClosed).toBe(false);
+      expect(g.frontOpeningDepth).toBeCloseTo((1 - pct / 100) * g.H, 9);
+      // Open at the lane centre through the outer wall, the plate and the lip, from the top down to zb.
+      for (const z of [zb + 0.15, (zb + topZ) / 2, topZ - 0.15]) {
+        expect(material(s, W - 0.8, yc, z)).toBeLessThan(1e-9);
+        expect(material(s, xFront(z) + 0.3, yc, z)).toBeLessThan(1e-9);
+      }
+      expect(material(s, W - WALL / 4, yc, topZ + lipH / 2)).toBeLessThan(1e-9);
+      expect(material(s, W - 0.8, yc, zb - 0.15)).toBeCloseTo(FULL, 9);
+      // Beside the opening the outer wall and the lip stay.
+      expect(material(s, W - 0.8, WALL + 1, topZ - 0.5)).toBeCloseTo(FULL, 9);
+      expect(material(s, W - WALL / 4, WALL / 4, topZ + lipH / 2)).toBeCloseTo(FULL, 9);
+      // The lining in the pocket: just beside and just below the opening; the pocket beyond it.
+      const x = W - WALL - 1;
+      const z = topZ - WALL - 0.5;
+      if (z > zb + 0.5) {
+        expect(material(s, x, yc + half(z) + WALL / 2, z)).toBeCloseTo(FULL, 9);
+        expect(material(s, x, yc + half(z) + WALL + 0.5, z)).toBeLessThan(1e-9);
+        expect(material(s, x, yc - half(z) - WALL / 2, z)).toBeCloseTo(FULL, 9);
+      }
+      if (zb - WALL - 0.5 > FLOOR + (WALL / g.cos + 2) / g.tan) {
+        expect(material(s, x, yc, zb - WALL / 2)).toBeCloseTo(FULL, 9);
+        expect(material(s, x, yc, zb - WALL - 0.5)).toBeLessThan(1e-9);
+      }
+      // Bearing areas: the opening is low at its bottom, the rest of the front top bears.
+      const areas = def.bearingAreas!(it);
+      const at = (px: number, py: number) => areas.filter((a) => px > a.x && px < a.x + a.width && py > a.y && py < a.y + a.depth);
+      expect(at(W - 0.2, yc)).toEqual([expect.objectContaining({ role: 'low', name: 'front opening' })]);
+      expect(at(W - 0.2, yc)[0].height).toBeCloseTo(zb, 9);
+      expect(at(W - 0.2, WALL + 1)).toEqual([expect.objectContaining({ role: 'lip' })]);
+      expect(at(W - WALL - 1, WALL + 1)).toEqual([expect.objectContaining({ role: 'bearing', name: 'front wall' })]);
+      expect(areas.filter((a) => a.role === 'low')).toHaveLength(1);
+      const feats = def.draw(item({ frontHeightPct: pct, columns: 2, wedgePlates: false }));
+      expect(feats.filter((f) => f.kind === 'rect' && f.role === 'solid')).toHaveLength(0);
+      expect(feats.filter((f) => f.kind === 'rect' && f.role === 'notch')).toHaveLength(1);
+    }
   });
 
   it('keepOut: leaning cards above the top, inside the footprint', () => {
@@ -286,11 +427,20 @@ describe('card-tray-tilted', () => {
     expect(v({ tiltAngle: 41 })).toEqual(['Tilt angle must be between 5° and 40° (is 41°).']);
     expect(v({ exposedHeight: -1 })).toContain('Exposed height must not be negative (is -1).');
     expect(v({ exposedHeight: 88 })).toContain('Exposed height (88 mm) must be smaller than the card height (88 mm).');
-    expect(v({ frontHeight: -1 })).toEqual(['Front wall height must not be negative (is -1).']);
+    expect(v({ frontHeightPct: -1 })).toEqual(['Front wall height must be between 0 % and 100 % of the wall (is -1 %).']);
+    // The opening must stay 1 mm above the slot floor's front corner (T·sin θ = 31·sin 15° = 8.02 mm).
+    expect(v({ frontHeightPct: 0 })).toEqual([
+      "Front wall height (0 % = 0 mm) must be at least 9.02 mm (13.74 %): the front access opening must stay 1 mm above the slot floor's front corner (8.02 mm above the floor).",
+    ]);
+    expect(v({ frontHeightPct: 13 })).toHaveLength(1);
+    expect(v({ frontHeightPct: 14 })).toEqual([]);
+    expect(v({ frontHeightPct: 101 })).toEqual(['Front wall height must be between 0 % and 100 % of the wall (is 101 %).']);
+    for (const frontHeightPct of [20, 99, 100]) expect(v({ frontHeightPct })).toEqual([]);
     expect(v({ overhangClearance: -0.5 })).toEqual(['Clearance behind the cards must not be negative (is -0.5).']);
     expect(v({ overhangClearance: 0 })).toEqual([]);
-    const H = tiltedGeom(item()).H;
-    expect(v({ frontHeight: 70 })).toEqual([`Front wall height (70 mm) must be lower than the inner height (${Math.round(H * 100) / 100} mm).`]);
+    // The old mm param is ignored; no "lower than the inner height" check any more.
+    expect(v({ frontHeight: 70 })).toEqual([]);
+    expect(v({ frontHeightPct: 100 }).some((m) => m.includes('inner height'))).toBe(false);
     expect(v({ cardWidth: 0 })).toContain('Card width must be greater than 0 (is 0).');
     expect(v({ columns: 1.5 })).toContain('Columns must be a whole number ≥ 1 (is 1.5).');
     expect(v({ columns: 2, dividerThickness: 0 })).toEqual(['Divider thickness must be greater than 0 (is 0).']);
@@ -466,8 +616,8 @@ describe('card-tray-tilted', () => {
         const zz = g.H - g.wedgeDepth - 1;
         expect(material(s, xb(i, zz) - (pitch - g.s) / 2, yc, FLOOR + zz)).toBeCloseTo(FULL, 9);
       }
-      // The front stub of the last cell keeps its material below frontHeight.
-      expect(material(s, fp.width - WALL / 2, yc, FLOOR + 18)).toBeCloseTo(FULL, 9);
+      // The front block keeps its material below the opening.
+      expect(material(s, fp.width - WALL / 2, yc, FLOOR + g.frontHeight - 2)).toBeCloseTo(FULL, 9);
       // The wedge depth is 60 % of H.
       expect(g.wedgeDepth).toBeCloseTo(0.6 * g.H, 9);
       expect(g.plateWedge.top).toBeCloseTo(0.6 * g.depth, 9);
@@ -563,7 +713,8 @@ describe('card-tray-tilted', () => {
     const notches = def.draw(it).filter((f) => f.kind === 'rect' && f.role === 'notch');
     // Front opening + 3 plate wedges + 2 · 3 side wedges.
     expect(notches).toHaveLength(1 + 3 + 6);
-    const plate = notches.filter((n) => n.kind === 'rect' && Math.abs(n.h - g.plateWedge.top) < 1e-9);
+    // The front opening notch has the same width; it is the one reaching the front face.
+    const plate = notches.filter((n) => n.kind === 'rect' && Math.abs(n.h - g.plateWedge.top) < 1e-9 && n.x + n.w < fp.width - 1e-6);
     expect(plate).toHaveLength(3);
     plate.forEach((n, i) => {
       if (n.kind !== 'rect') return;
@@ -599,6 +750,8 @@ describe('card-tray-tilted', () => {
 
   it('params: hollow back and the wedge toggles', () => {
     expect(def.params.find((p) => p.key === 'hollowBack')).toMatchObject({ kind: 'boolean', default: true, label: 'Hollow back', group: 'Dispenser' });
+    expect(def.params.find((p) => p.key === 'hollowFront')).toMatchObject({ kind: 'boolean', default: true, label: 'Hollow front', group: 'Dispenser' });
+    expect(def.params.find((p) => p.key === 'frontHeightPct')).toMatchObject({ kind: 'number', default: 50, min: 0, max: 100, step: 5, group: 'Dispenser' });
     expect(def.params.find((p) => p.key === 'wedgePlates')).toMatchObject({
       kind: 'boolean',
       default: true,
@@ -611,7 +764,9 @@ describe('card-tray-tilted', () => {
       expect(p).toMatchObject({ default: 0, group: 'Wedge' });
       expect(p.visibleIf!({ wedgePlates: true, wedgeSides: false })).toBe(true);
       expect(p.visibleIf!({ wedgePlates: false, wedgeSides: true })).toBe(true);
-      expect(p.visibleIf!({ wedgePlates: false, wedgeSides: false })).toBe(false);
+      expect(p.visibleIf!({ wedgePlates: false, wedgeSides: false, frontHeightPct: 100 })).toBe(false);
+      // The widths also size the front access opening: shown while it is open.
+      expect(p.visibleIf!({ wedgePlates: false, wedgeSides: false })).toBe(key !== 'wedgeDepth');
     }
   });
 
@@ -633,8 +788,11 @@ describe('card-tray-tilted', () => {
     expect(msg({ wedgeDepth: 60 })).toMatch(new RegExp(`Wedge depth \\(60 mm\\) must not exceed ${Math.round(max * 100) / 100} mm`));
     expect(def.validate!(item({ wedgeDepth: Math.floor(max) }))).toEqual([]);
     expect(def.validate!(item({ wedgeDepth: Math.floor(max), wedgeSides: true }))).toEqual([]);
-    // Both toggles off: the wedge checks are skipped.
-    expect(def.validate!(item({ wedgePlates: false, wedgeTopWidth: 80, wedgeBottomWidth: 90, wedgeDepth: 100 }))).toEqual([]);
+    // Both toggles off and the front closed: the wedge checks are skipped.
+    expect(def.validate!(item({ wedgePlates: false, frontHeightPct: 100, wedgeTopWidth: 80, wedgeBottomWidth: 90, wedgeDepth: 100 }))).toEqual([]);
+    // With the front open the widths size the access opening (still checked), the depth is not used.
+    expect(msg({ wedgePlates: false, wedgeTopWidth: 80, wedgeDepth: 100 })).toMatch(/Wedge top width \(80 mm\) must be smaller than 62\.3 mm/);
+    expect(msg({ wedgePlates: false, wedgeDepth: 100 })).toBe('');
     expect(def.validate!(item({ stackTop: 'lip', stackBottom: 'recess' }))).toEqual([]);
   });
 });

@@ -166,7 +166,7 @@ a plate with optional corner stops (engagement = `stopHeight`).
 | `item-tray`    | Token tray, N×M cells, flat or scoop floor  | innerWidth/Depth/Height (one cell), columns, rows, dividerThickness (dividers always full height), floorShape (`flat`/`scoop`), scoopSides (`long`/`short`), scoopRise |
 | `card-tray-flat` | Card stacks lying flat, finger gaps into a raised floor (never through it), repeats along X | cardParams, columns, dividerThickness, gapWidth, gapFloorDepth, gapReach, gapSides (`sides`/`ends`/`both`) |
 | `card-tray-upright` | Card stacks standing, wedges in the end walls and dividers and / or the long walls, repeats along X | cardParams, exposedHeight, columns, dividerThickness, dividerHeight, wedgeEnds, wedgeLong, wedgeTopWidth, wedgeBottomWidth, wedgeDepth (sizes 0 = auto, relative to the cell) |
-| `card-tray-tilted` | Card display / dispenser: stacks leaning back, stepped one behind the other along X with tilted dividers, open front, hollow back, wedges | cardParams, tiltAngle, exposedHeight, frontHeight, overhangClearance, hollowBack, columns, dividerThickness (tilted dividers always full height), wedgePlates, wedgeSides, wedgeTopWidth, wedgeBottomWidth, wedgeDepth |
+| `card-tray-tilted` | Card display / dispenser: stacks leaning back, stepped one behind the other along X with tilted dividers, front access opening, hollow back and front, wedges | cardParams, tiltAngle, exposedHeight, frontHeightPct, overhangClearance, hollowBack, hollowFront, columns, dividerThickness (tilted dividers always full height), wedgePlates, wedgeSides, wedgeTopWidth, wedgeBottomWidth, wedgeDepth |
 | `spacer`       | Solid filler block to take up slack         | width, depth, height |
 | `platform`     | Plate bridging trays to carry the next level | width, depth, thickness, cornerStops, stopSize, stopHeight, stopInset, locateItems |
 
@@ -376,8 +376,12 @@ the footprint), pitch s + t/cos θ (smaller than the cell: the framework
 allows that with `straightDividers: false`), so a tilted divider t thick,
 always full height, stands between neighbouring slots; slot 0 may notch the
 back lip only on steep tilts with a small `back`; only the front wall (last
-slot) gets the opening above `frontHeight`; its bearing areas wrap the
-framework's (front opening removed, a `low` shelf at `frontHeight`, tilted
+slot) has a full-height front block (mirror of the back: leaning plate,
+outer wall, `hollowFront` pocket, lip all round) with a trapezoid access
+opening (the plate wedge widths) cut from the top down to `frontHeightPct` %
+of H (from the floor; 100 % = closed; the bottom must stay 1 mm above the slot
+floor's front corner, T·sin θ); its bearing areas wrap the framework's (front
+block top added as bearing, the opening's top width `low` at its bottom; tilted
 divider tops and the back strip added); `keepOut` height is exposed·cos θ +
 stackHeight·sin θ − lipH, x from `wall + overhangClearance` for slot 0 (inside
 the footprint). `hollowBack` (default on) replaces the solid back wedge by a

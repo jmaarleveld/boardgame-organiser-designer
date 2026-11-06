@@ -187,8 +187,10 @@ standing cards.
 A card display: slots stepped one behind the other along X, every stack
 leaning back by `tiltAngle` (default 15, 5 to 40) towards X = 0; cell 0 is at
 the back, the front deck is drawn from the front (+X). Params in group
-"Dispenser": `tiltAngle`, `exposedHeight` (20), `frontHeight` (20),
-`overhangClearance` ("Clearance behind the cards", 2, ≥ 0); group "Repeat":
+"Dispenser": `tiltAngle`, `exposedHeight` (20), `frontHeightPct` ("Front wall height
+(% of wall)", 50, 0 to 100, step 5),
+`overhangClearance` ("Clearance behind the cards", 2, ≥ 0), `hollowBack`,
+`hollowFront` (both default true); group "Repeat":
 `columns`, `dividerThickness` t. With T = stackHeight + c and θ = tiltAngle:
 
 * inner height `H = (cardHeight - exposedHeight)·cos θ`, slot width
@@ -246,7 +248,8 @@ the back, the front deck is drawn from the front (+X). Params in group
   the span the wedge is cut across, bottom 40 % of the top, depth 60 % of H,
   clamped to `H - T·sin θ - 1` so it stays above the floor wedge under every
   slot; only bites at steep tilts with thick stacks), shown when either
-  toggle is on:
+  toggle is on (the two widths also while the front access opening is open,
+  since they size it too):
   * `wedgePlates` (default true, "Wedges in the leaning plates"): a vertical
     trapezoid in the YZ plane centred on the lane (span = lane width
     cardWidth + 2c), cut from the top of the plate behind every slot: for
@@ -255,7 +258,7 @@ the back, the front deck is drawn from the front (+X). Params in group
     X from 0 (slot 0) or `x_back_i(H) - pitch` to `x_back_i(zBot) + EPS`,
     clipped to the slab between slot i - 1's back face and slot i's front face
     (the neighbouring slots are air), so it never reaches divider i, the side
-    walls (top < lane - 2·max(wall, 1)) or the last cell's front stub. Pinch
+    walls (top < lane - 2·max(wall, 1)) or the last cell's front block. Pinch
     the deck front and back.
   * `wedgeSides` (default false, "Wedges in the side walls"): per slot a
     trapezoid in the slot's tilted frame, top width along v = (cos θ, 0,
@@ -268,41 +271,74 @@ the back, the front deck is drawn from the front (+X). Params in group
   * Mini-map: per plate wedge a `notch` rect across the lane, top width deep
     (Y), over the plate's top (x 0 … wall + back for slot 0, the divider rect
     for i > 0); per side wedge two `notch` rects `top / cos θ` x wall.
-  * Validation (a toggle on): sizes non-negative, explicit bottom <= the
-    smallest top in use, explicit top < span - 2·max(wall, 1) (lane width for
-    the plates, T for the side walls), explicit depth <= `H - T·sin θ - 1`.
-* **Front opening** (last cell only): everything in front of slot n - 1's
-  front-face plane above `floorZ + frontHeight` is removed, within the lane's
-  Y range only (flush at the side walls), through the front outer wall and
-  lip. Below `frontHeight` the front holds the stack. Interior slots have no
-  opening: their divider is in front of them.
+  * Validation (a toggle on, or the front open for the widths): sizes
+    non-negative, explicit bottom <= the smallest top in use, explicit top <
+    span - 2·max(wall, 1) (lane width for the plates and the front opening, T
+    for the side walls), explicit depth <= `H - T·sin θ - 1` (toggles only).
+* **Front block** (last cell, the mirror of the back): a full-height block
+  between slot n - 1's tilted front face `x_front(z) = x_back_{n-1}(z) + s`
+  and the vertical outer front face at X = W; `wall` thick at the floor,
+  `wall + H·tan θ` at the wall top. The lip ring runs all round, so stacking
+  works as for any tray. **Hollow front** (`hollowFront`, default true): like
+  the back, a leaning plate `wall` thick (perpendicular) in front of the slot
+  (front face `x_front(z) + wall / cos θ`), the outer front wall (`wall`) and
+  a pocket between them, `(z - floorZ)·tan θ - wall / cos θ` wide, a
+  triangle pointing down: cut off where it is 1 mm wide (or above the recess
+  ring + `MIN_RECESS_WALL`), up to a flat roof `wall` thick under the top
+  face, open through both side walls; skipped when less than 1 mm high or wide
+  (`frontPocketProfile`). Default (15°, wall 1.6): 15.5 mm wide under the
+  roof, from 9.9 mm above the floor up to `H - wall` (54.2 mm high).
+* **Front access opening**: `frontHeight = frontHeightPct / 100 · H`, from the
+  structural floor `floorZ`; the opening is the plate wedge trapezoid
+  (`wedgeTopWidth` / `wedgeBottomWidth`, auto 60 % of the lane / 40 % of the
+  top, whatever `wedgePlates` says) centred on the lane, cut from the wall top
+  down to `floorZ + frontHeight`, i.e. `(1 - pct/100)·H` deep, through the
+  whole front block and the lip (outer wall, pocket, plate). Extruded along X
+  from the slot's back face at the wall top to the outer face, clipped to the
+  half space in front of the slot's back face plane so it never reaches the
+  divider behind the last slot. With the hollow front the pocket keeps the
+  same `wall`-thick lining around it as the back wedge (`wedgeLining`, with the
+  opening depth). The slot floor rises `T·sin θ` toward the front, so the
+  opening bottom stands `pct·H - T·sin θ` above the slot floor at the front;
+  validation requires `frontHeight >= T·sin θ + 1` (default 9.02 mm = 13.7 %;
+  0 % is reported). At 100 % (`>= 100 - 1e-9`) there is no opening: a closed
+  front like a normal wall. Interior slots have no opening: their divider is
+  in front of them.
 * Mini-map: per slot a `cavity` rect for its top opening (x_back_i(H) to
-  x_back_i(H) + s; for the last slot up to where the front opening meets the
-  shelf, since the slot is open from above there), a `divider` rect per tilted
-  divider at the wall top (t / cos θ wide; the framework draws none with
-  `straightDividers: false`), and for the last slot the `solid` shelf and the
-  `notch` in the front wall.
+  x_back_i(H) + s), a `divider` rect per tilted divider at the wall top
+  (t / cos θ wide; the framework draws none with `straightDividers: false`);
+  the front block is solid (no rect), with a `notch` rect for the access
+  opening (top width across Y, from `x_back_{n-1}(H) + s` to the outer face)
+  below 100 %.
 * Mini-map: the `back` strip is drawn as part of the solid (no rect).
 * `keepOut`: per slot, height `exposed·cos θ + stackHeight·sin θ - lipH` (the
   front card's top corner stands higher on the tilted floor), x from
   `x_back_i(H) - overhang` to `x_back_i(H) + s`. For slot 0 that starts at
   `wall + overhangClearance`, inside the footprint; slots i > 0 overhang the
   previous slot of the same part.
-* **Bearing areas** wrap the framework's (outer ring only, no dividers with
-  `straightDividers: false`): the last slot's front opening is subtracted, a
-  `low` shelf at `frontHeight` is added, every tilted divider top is added
+* **Bearing areas** wrap the framework's (outer ring and lip all round, no
+  dividers with `straightDividers: false`): the top of the front block
+  (`x_back_{n-1}(H) + s` to the outer wall) is added as `bearing` `front wall`
+  at the wall top; below 100 % the access opening's top width (over the block,
+  the outer wall and the lip) is taken out of both and added as `low`
+  `front opening` at `floorZ + frontHeight`. A tray on top rests on the whole
+  ring except that gap. Every tilted divider top is added
   (`bearing` at the wall top, x range as in the mini-map), the `back` strip
   (`wall … wall + back`) is added as `bearing` at the wall top, and the back
   lip piece slot 0 notches (if any) becomes `low`.
 * **Chiral**: the cards always lean towards -X (-y at rotation 90), the mirror
   image is a different part; see DESIGN.md §4.1 and the assembly-view question
   in `docs-box-design-ideas.md`.
-* Validation: tilt range, `exposedHeight < cardHeight`, `0 <= frontHeight < H`,
+* Validation: tilt range, `exposedHeight < cardHeight`, `0 <= frontHeightPct <= 100`,
+  below 100 % `frontHeight >= T·sin θ + 1`,
   `overhangClearance >= 0`, divider thickness > 0 with more than one column,
   the wedge checks above and the recess wall next to the hollow back.
 * An earlier version (2026-11-06) repeated lanes along Y (`rows`) and had a
   `dividerHeight`; on load (`migrateLegacyItem`) `rows` ≥ 2 becomes `columns`
-  and both `rows` and `dividerHeight` are dropped.
+  and both `rows` and `dividerHeight` are dropped. A saved `frontHeight` (mm)
+  becomes `frontHeightPct = round(100·frontHeight / H, 1 decimal)`, clamped to
+  [0, 100], with H from the item's own cardHeight / exposedHeight / tiltAngle
+  (defaults 88, 20, 15° for missing keys); `frontHeight` is dropped.
 
 ### 4. `item-tray` — Item tray
 

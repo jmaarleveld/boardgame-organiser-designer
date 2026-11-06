@@ -166,6 +166,36 @@ describe('persistence', () => {
     expect(validateProject(proj).items[0].params).toEqual({ columns: 2 });
   });
 
+  it('migrates the tilted tray front height: frontHeight (mm) → frontHeightPct (% of the wall height)', () => {
+    const tilted = (params: PlacedItem['params']): PlacedItem => ({ id: 'a', type: 'card-tray-tilted', label: 'a', x: 0, y: 0, rotation: 0, params });
+    const m = (params: PlacedItem['params']) => migrateLegacyItem(tilted(params)).params;
+    const pct = (mm: number, cardHeight: number, exposed: number, tilt: number) =>
+      Math.round((1000 * mm) / ((cardHeight - exposed) * Math.cos((tilt * Math.PI) / 180))) / 10;
+    // Defaults (88, 20, 15°): H = 65.68 mm, 20 mm → 30.4 %.
+    expect(m({ frontHeight: 20 })).toEqual({ frontHeightPct: 30.4 });
+    expect(pct(20, 88, 20, 15)).toBe(30.4);
+    // The item's own card height, exposed height and tilt.
+    expect(m({ frontHeight: 25, cardHeight: 100, exposedHeight: 10, tiltAngle: 30, columns: 2 })).toEqual({
+      frontHeightPct: pct(25, 100, 10, 30),
+      cardHeight: 100,
+      exposedHeight: 10,
+      tiltAngle: 30,
+      columns: 2,
+    });
+    // Clamped to [0, 100].
+    expect(m({ frontHeight: 200 })).toEqual({ frontHeightPct: 100 });
+    expect(m({ frontHeight: -5 })).toEqual({ frontHeightPct: 0 });
+    expect(m({ frontHeight: 0 })).toEqual({ frontHeightPct: 0 });
+    // Together with the rows migration.
+    expect(m({ rows: 2, frontHeight: 20, dividerHeight: 10 })).toEqual({ columns: 2, frontHeightPct: 30.4 });
+    // Already migrated: unchanged.
+    const done = tilted({ frontHeightPct: 40 });
+    expect(migrateLegacyItem(done)).toBe(done);
+    // Through validateProject (the load path) too.
+    const proj = { version: 1, settings: createEmptyProject().settings, items: [tilted({ frontHeight: 20 })] };
+    expect(validateProject(proj).items[0].params).toEqual({ frontHeightPct: 30.4 });
+  });
+
   it('migrates the upright wedge params: wedges / wedgeWalls → wedgeEnds / wedgeLong', () => {
     const upright = (params: PlacedItem['params']): PlacedItem => ({ id: 'u', type: 'card-tray-upright', label: 'u', x: 0, y: 0, rotation: 0, params });
     const m = (params: PlacedItem['params']) => migrateLegacyItem(upright(params)).params;

@@ -2,8 +2,9 @@
  * Card tray (tilted): a card display / dispenser. Each cell holds a standing
  * card stack leaning back by `tiltAngle` towards X = 0; the cells are stepped
  * one behind the other along X (columns), cell 0 at the back. The front
- * outer wall (+X) is cut down to `frontHeight` so the front deck is exposed
- * and a thumb pushes its front card forward and out.
+ * block (+X) has a trapezoid access opening cut from its top down to
+ * `frontHeightPct` % of the wall height, so the front deck is exposed and a
+ * thumb pushes its front card forward and out.
  *
  * The part is chiral: the cards always lean towards −X, so its mirror image
  * (leaning towards +X) is a different part. The layout only knows the
@@ -37,10 +38,27 @@
  * angle and a small `back` it may notch the back lip where the cards lean
  * over it (otherwise the cards would rest on the lip).
  *
- * Front opening (last cell only): everything in front of slot n − 1's front
- * face plane above floorZ + frontHeight is removed, within the lane's Y range
- * only (flush at the side walls), through the front outer wall and its lip.
- * Below frontHeight the material in front of the slot holds the stack.
+ * Front block (last cell, the mirror of the back): a full-height block
+ * between slot n − 1's tilted front face x_front(z) = x_back_{n−1}(z) + s and
+ * the vertical outer front face at X = W, `wall` thick at the floor and
+ * wall + H·tan θ at the top; the lip ring runs all round. `hollowFront`
+ * hollows it like the back: a leaning plate `wall` thick (perpendicular) in
+ * front of the slot, the outer front wall (`wall`) and a pocket between them
+ * (a downward pointing triangle, from where it is 1 mm wide, or above the
+ * recess ring, up to a flat roof `wall` thick under the top face), open
+ * through both side walls (see `frontPocketProfile`).
+ *
+ * Front opening (access): a trapezoid in the YZ plane, centred on the lane,
+ * sized like the plate wedges (`wedgeTopWidth` / `wedgeBottomWidth`, auto
+ * 60 % of the lane / 40 % of the top, whatever `wedgePlates` says), cut from
+ * the top through the whole front block and its lip (outer wall, pocket,
+ * plate) down to floorZ + frontHeight, frontHeight = frontHeightPct / 100 · H,
+ * i.e. (1 − pct/100)·H deep from the wall top; see `frontOpeningCutter`. With
+ * the hollow front the pocket keeps a `wall`-thick lining around it
+ * (`wedgeLining`). The slot floor rises T·sin θ toward the front, so the
+ * opening bottom stands pct·H − T·sin θ above the slot floor at the front;
+ * it must stay ≥ 1 mm above it (validated). At 100 % (≥ 100 − 1e-9,
+ * `frontClosed`) there is no opening at all.
  *
  * Hollow back (`hollowBack`, cell 0 only): the solid back wedge becomes a
  * leaning plate `wall` thick (perpendicular) behind slot 0, the vertical outer
@@ -109,7 +127,7 @@ export function tiltedGeom(item: ResolvedItem) {
   const c = cards.clearance;
   const tilt = num(item, 'tiltAngle', 15);
   const exposed = num(item, 'exposedHeight', 20);
-  const frontHeight = num(item, 'frontHeight', 20);
+  const frontHeightPct = num(item, 'frontHeightPct', 50);
   const overhangClearance = num(item, 'overhangClearance', 2);
   const th = (tilt * Math.PI) / 180;
   const cos = Math.cos(th);
@@ -125,11 +143,18 @@ export function tiltedGeom(item: ResolvedItem) {
   /** Deepest wedge that stays 1 mm above the floor wedge under a slot (its front corner stands T·sin θ high). */
   const wedgeMaxDepth = H - T * sin - 1;
   const depth = cards.cardWidth + 2 * c;
+  /** Front wall height above floorZ in mm (frontHeightPct % of H). */
+  const frontHeight = (frontHeightPct / 100) * H;
   return {
     cards,
     tilt,
     exposed,
+    frontHeightPct,
     frontHeight,
+    /** 100 %: no front opening, the front wall is a full wall with its lip. */
+    frontClosed: frontHeightPct >= 100 - 1e-9,
+    /** Depth of the front opening below the wall top. */
+    frontOpeningDepth: H - frontHeight,
     th,
     cos,
     sin,
@@ -143,6 +168,7 @@ export function tiltedGeom(item: ResolvedItem) {
     width: back + H * tan + s,
     depth,
     hollowBack: bool(item, 'hollowBack', true),
+    hollowFront: bool(item, 'hollowFront', true),
     wedgePlates: bool(item, 'wedgePlates', true),
     wedgeSides: bool(item, 'wedgeSides', false),
     wedgeRaw: raw,
@@ -161,11 +187,6 @@ type Geom = ReturnType<typeof tiltedGeom>;
 export function tiltedPitch(item: ResolvedItem): number {
   const g = tiltedGeom(item);
   return g.s + tilingOf(item, 'x').divider / g.cos;
-}
-
-/** X where the slot's front face plane meets z = floorZ + frontHeight: the front opening starts here. */
-function cutX(f: CellFrame, g: Geom): number {
-  return f.x + f.width - g.frontHeight * g.tan;
 }
 
 /**
@@ -199,17 +220,53 @@ function slotCutter(kernel: GeometryKernel, f: CellFrame, g: Geom): Solid {
 }
 
 /**
- * Front opening: the half space in front of the slot's front face plane
- * (a big rotated box), intersected with the lane's Y range from
- * floorZ + frontHeight up past the top, to EPS beyond the front outer face.
+ * Front opening of the last cell: the plate wedge trapezoid (centred on the
+ * lane, top / bottom as `plateWedge`) from the wall top down to
+ * floorZ + frontHeight, continuing up through the lip, extruded along X from
+ * the slot's back face at the wall top to EPS beyond the front outer face and
+ * clipped to the half space in front of the slot's back face plane (slot
+ * local x ≥ 0), so it never reaches the divider behind the last slot.
  */
-function frontCutter(kernel: GeometryKernel, f: CellFrame, g: Geom, outerW: number): Solid {
+function frontOpeningCutter(kernel: GeometryKernel, f: CellFrame, g: Geom, outerW: number): Solid {
+  const x0 = f.x + g.back;
+  const prism = wedgeCutter(kernel, {
+    across: 'x',
+    a0: x0,
+    t: outerW - x0,
+    c: f.y + f.depth / 2,
+    size: g.plateWedge,
+    zTop: f.topZ,
+    zBot: f.topZ - g.frontOpeningDepth,
+    zCap: f.topZ + f.lipH + EPS,
+  });
   const big = outerW + f.topZ + f.lipH + g.T + 10;
-  const half = tiltedBox(kernel, f, g, [big, f.depth + 2, 2 * big], [g.T, -1, -big]);
-  const z0 = f.floorZ + g.frontHeight;
-  const x0 = f.x;
-  const clip = kernel.box(outerW + EPS - x0, f.depth, f.topZ + f.lipH + EPS - z0, [x0, f.y, z0]);
-  return kernel.intersection([half, clip]);
+  const slab = tiltedBox(kernel, f, g, [big, f.depth + 2, 2 * big], [0, -1, -big]);
+  return kernel.intersection([prism, slab]);
+}
+
+/**
+ * Profile of the hollow front pocket in the XZ plane (last cell only), as
+ * (x, z) pairs counter‑clockwise, or null when it would be less than 1 mm
+ * high or wide. The leaning plate in front of the last slot is `wall` thick
+ * perpendicular to the cards, so its front face is
+ * x_front(z) + wall / cos θ = xIn − (z − floorZ)·tan θ + wall / cos θ, with
+ * xIn = f.x + f.width the inner face of the outer front wall. The pocket lies
+ * between them: (z − floorZ)·tan θ − wall / cos θ wide, a triangle pointing
+ * down, cut off where it is 1 mm wide (or at `zBottom`, above the recess
+ * ring), up to topZ − wall (a flat roof `wall` thick under the top face).
+ */
+export function frontPocketProfile(g: Geom, wall: number, xIn: number, floorZ: number, topZ: number, zBottom = floorZ): Vec2[] | null {
+  if (!(g.tan > 0)) return null;
+  const plateFront = (z: number) => xIn - (z - floorZ) * g.tan + wall / g.cos;
+  const z0 = Math.max(zBottom, floorZ + (wall / g.cos + 1) / g.tan);
+  const z1 = topZ - wall;
+  if (!(z1 - z0 >= 1) || !(xIn - plateFront(z1) >= 1)) return null;
+  return [
+    [plateFront(z0), z0],
+    [xIn, z0],
+    [xIn, z1],
+    [plateFront(z1), z1],
+  ];
 }
 
 /**
@@ -254,7 +311,7 @@ function pocketBottom(floorZ: number, s: Stacking): number {
  * The neighbouring slots are air; the box is clipped to the slab between
  * slot i − 1's back face and slot i's front face (slot i's local
  * x ∈ [−pitch·cos θ, T]; for cell 0 everything behind slot 0's front face),
- * so it never reaches divider i or the last cell's front stub, however steep
+ * so it never reaches divider i or the last cell's front block, however steep
  * the tilt. Its bottom stays above the floor wedges under the slots
  * (depth ≤ H − T·sin θ − 1).
  */
@@ -282,18 +339,19 @@ function plateWedgeCutter(kernel: GeometryKernel, f: CellFrame, g: Geom, pitch: 
 /**
  * The plate wedge of cell 0 grown by `wall` (a true offset: each slanted side
  * shifted outward by `wall` perpendicular to it, the bottom edge down by
- * `wall`, the top at topZ + EPS), extruded along X over the whole pocket
- * (−EPS to x_back_0(floor) + 1). Subtracted from the pocket cutter, so a
+ * `wall`, the top at topZ + EPS), extruded along X over [a0, a0 + t] (the
+ * whole pocket). `depth` is the wedge depth below the wall top. Also used,
+ * with the front opening's depth, for the front pocket. Subtracted from the pocket cutter, so a
  * `wall`-thick lining stays around the wedge cut and nothing looks into the
  * pocket; the pocket splits into a left and a right half, each still open
  * through its side wall, with a flat ceiling bridging the pocket under the
  * wedge bottom.
  */
-function wedgeLining(kernel: GeometryKernel, f: CellFrame, g: Geom, wall: number): Solid {
+function wedgeLining(kernel: GeometryKernel, f: CellFrame, g: Geom, wall: number, depth: number, a0: number, t: number): Solid {
   const tw = g.plateWedge.top / 2;
   const bw = g.plateWedge.bottom / 2;
   const zTop = f.topZ;
-  const zb = zTop - g.wedgeDepth;
+  const zb = zTop - depth;
   // Right slanted side from (bw, zb) to (tw, zTop) relative to the centre; outward normal (dz, −dx) / len.
   const dx = tw - bw;
   const dz = zTop - zb;
@@ -305,8 +363,8 @@ function wedgeLining(kernel: GeometryKernel, f: CellFrame, g: Geom, wall: number
   const zBot = zb - wall;
   return wedgeCutter(kernel, {
     across: 'x',
-    a0: 0,
-    t: wall + g.back + g.H * g.tan + 1,
+    a0,
+    t,
     c: f.y + f.depth / 2,
     size: { top: 2 * half(zTop), bottom: 2 * half(zBot) },
     zTop,
@@ -355,6 +413,11 @@ function sideWedgeCutters(kernel: GeometryKernel, f: CellFrame, g: Geom): Solid[
     toSlotFrame(kernel, f, g, extrudeXZ(kernel, poly, -f.sides.front - EPS, EPS)),
     toSlotFrame(kernel, f, g, extrudeXZ(kernel, poly, f.depth - EPS, f.depth + f.sides.back + EPS)),
   ];
+}
+
+/** Whether the front access opening is cut: below 100 % and with a positive size. */
+function frontOpen(g: Geom): boolean {
+  return !g.frontClosed && g.frontOpeningDepth > 1e-9 && g.plateWedge.top > 0;
 }
 
 /** Whether the wedges have a size at all (the toggles are checked separately). */
@@ -410,18 +473,29 @@ function spec(item: ResolvedItem): TiledBoxSpec {
   const L = tiledLayout({ ...base, cellCutters: () => [], cellDraw: () => [] });
   const plates = g.wedgePlates && wedgesSized(g);
   const sides = g.wedgeSides && wedgesSized(g);
+  /** The front access opening exists (below 100 %, with a size). */
+  const front = frontOpen(g);
   return {
     ...base,
     cellCutters(kernel, f) {
       const out = [slotCutter(kernel, f, g)];
-      if (f.outer.right) out.push(frontCutter(kernel, f, g, L.width));
       if (f.outer.left && g.hollowBack) {
         const poly = pocketProfile(g, base.wall, f.floorZ, f.topZ, pocketBottom(f.floorZ, base.stacking));
         if (poly) {
           const pocket = extrudeXZ(kernel, poly, -EPS, L.depth + EPS);
-          out.push(plates ? kernel.difference(pocket, [wedgeLining(kernel, f, g, base.wall)]) : pocket);
+          const lining = () => wedgeLining(kernel, f, g, base.wall, g.wedgeDepth, 0, base.wall + g.back + g.H * g.tan + 1);
+          out.push(plates ? kernel.difference(pocket, [lining()]) : pocket);
         }
       }
+      if (f.outer.right && g.hollowFront) {
+        const poly = frontPocketProfile(g, base.wall, f.x + f.width, f.floorZ, f.topZ, pocketBottom(f.floorZ, base.stacking));
+        if (poly) {
+          const pocket = extrudeXZ(kernel, poly, -EPS, L.depth + EPS);
+          const a0 = f.x + g.back;
+          out.push(front ? kernel.difference(pocket, [wedgeLining(kernel, f, g, base.wall, g.frontOpeningDepth, a0, L.width - a0 + 1)]) : pocket);
+        }
+      }
+      if (f.outer.right && front) out.push(frontOpeningCutter(kernel, f, g, L.width));
       if (plates) out.push(plateWedgeCutter(kernel, f, g, pitch, L.width));
       if (sides) out.push(...sideWedgeCutters(kernel, f, g));
       return out;
@@ -429,19 +503,14 @@ function spec(item: ResolvedItem): TiledBoxSpec {
     cellDraw(f) {
       const xTop = f.x + g.back; // x_back_i(H): the slot's back face at the wall top
       const out: TopViewFeature[] = [];
+      out.push({ kind: 'rect', role: 'cavity', x: xTop, y: f.y, w: g.s, h: f.depth });
       if (!f.outer.right) {
-        out.push(
-          { kind: 'rect', role: 'cavity', x: xTop, y: f.y, w: g.s, h: f.depth },
-          // The tilted divider in front of this slot, at the wall top.
-          { kind: 'rect', role: 'divider', x: xTop + g.s, y: f.y, w: pitch - g.s, h: f.depth },
-        );
-      } else {
-        // Last cell: the slot is open from above up to where the front opening
-        // ends (x0), then the shelf at frontHeight, then the gap in the front wall.
-        const x0 = Math.max(cutX(f, g), xTop + g.s);
-        out.push({ kind: 'rect', role: 'cavity', x: xTop, y: f.y, w: x0 - xTop, h: f.depth });
-        if (f.x + f.width - x0 > 1e-9) out.push({ kind: 'rect', role: 'solid', x: x0, y: f.y, w: f.x + f.width - x0, h: f.depth });
-        out.push({ kind: 'rect', role: 'notch', x: f.x + f.width, y: f.y, w: f.sides.right, h: f.depth });
+        // The tilted divider in front of this slot, at the wall top.
+        out.push({ kind: 'rect', role: 'divider', x: xTop + g.s, y: f.y, w: pitch - g.s, h: f.depth });
+      } else if (front) {
+        // The front access opening across the front block (the block itself is solid: no rect).
+        const top = g.plateWedge.top;
+        out.push({ kind: 'rect', role: 'notch', x: xTop + g.s, y: f.y + f.depth / 2 - top / 2, w: f.x + f.width + f.sides.right - xTop - g.s, h: top });
       }
       if (plates) {
         // The plate behind the slot at the wall top: the whole back (outer face to slot 0) or the divider.
@@ -463,8 +532,11 @@ function spec(item: ResolvedItem): TiledBoxSpec {
 }
 
 /**
- * Bearing areas: the framework's outer ring minus the front opening of the
- * last cell, plus the cut‑down front as a 'low' shelf at floorZ + frontHeight,
+ * Bearing areas: the framework's outer ring (lip all round), plus the top of
+ * the front block in front of the last slot ('front wall', wall top); the
+ * front access opening's top width (over the block, the outer wall and the
+ * lip) is taken out of both and added as 'low' at its bottom
+ * (floorZ + frontHeight),
  * plus every tilted divider's top at the wall top (x from slot i's front
  * face to slot i + 1's back face) and the extra back wall strip
  * (wall … wall + back) at the wall top; where slot 0 notches the back lip,
@@ -481,10 +553,19 @@ function bearingAreas(item: ResolvedItem): BearingArea[] {
       extra.push({ x: f.x, y: f.y, width: g.back, depth: f.depth, height: f.topZ, role: 'bearing', name: 'back wall' });
     }
     if (f.outer.right) {
-      const x0 = cutX(f, g);
-      const front = { x: x0, y: f.y, width: L.width - x0, depth: f.depth };
-      areas = areas.flatMap((a) => subtractRect(a, front));
-      extra.push({ ...front, height: f.floorZ + g.frontHeight, role: 'low', name: 'front wall' });
+      const x0 = f.x + g.back + g.s;
+      let block: BearingArea[] =
+        f.x + f.width - x0 > 1e-9
+          ? [{ x: x0, y: f.y, width: f.x + f.width - x0, depth: f.depth, height: f.topZ, role: 'bearing', name: 'front wall' }]
+          : [];
+      if (frontOpen(g)) {
+        const top = g.plateWedge.top;
+        const hole = { x: x0, y: f.y + f.depth / 2 - top / 2, width: L.width - x0, depth: top };
+        areas = areas.flatMap((a) => subtractRect(a, hole));
+        block = block.flatMap((a) => subtractRect(a, hole));
+        block.push({ ...hole, height: f.floorZ + g.frontHeight, role: 'low', name: 'front opening' });
+      }
+      extra.push(...block);
     } else {
       // At the wall top the divider spans [x_back_i(H) + s, x_back_i(H) + pitch].
       extra.push({ x: f.x + g.back + g.s, y: f.y, width: L.pitchX - g.s, depth: f.depth, height: f.topZ, role: 'bearing', name: 'divider' });
@@ -541,13 +622,15 @@ function keepOut(item: ResolvedItem): KeepOut[] {
   }));
 }
 
-/** The wedge size params are shown when either toggle is on. */
+/** The wedge depth is shown when either toggle is on. */
 const wedgesOn = (p: ItemParams): boolean => p.wedgePlates !== false || p.wedgeSides === true;
+/** The wedge widths also size the front access opening, so they are shown below 100 % too. */
+const wedgeWidthsOn = (p: ItemParams): boolean => wedgesOn(p) || !(typeof p.frontHeightPct === 'number' && p.frontHeightPct >= 100);
 
 export const cardTrayTilted: BoxTypeDefinition = {
   id: 'card-tray-tilted',
   name: 'Card tray (tilted)',
-  description: 'Standing card stacks leaning back, stepped one behind the other, with an open front: a card display and dispenser during play.',
+  description: 'Standing card stacks leaning back, stepped one behind the other, with an access opening in the front: a card display and dispenser during play.',
   params: [
     ...cardParams,
     {
@@ -573,15 +656,15 @@ export const cardTrayTilted: BoxTypeDefinition = {
       help: 'How much of the card length sticks out above the walls.',
     },
     {
-      key: 'frontHeight',
-      label: 'Front wall height',
+      key: 'frontHeightPct',
+      label: 'Front wall height (% of wall)',
       kind: 'number',
-      default: 20,
+      default: 50,
       min: 0,
-      step: 0.5,
-      unit: 'mm',
+      max: 100,
+      step: 5,
       group: 'Dispenser',
-      help: 'Height of the front wall above the floor; above it the front is open so the cards can be pushed out.',
+      help: 'Height of the front wall left below the access opening, as a percentage of the wall height (from the floor): the opening is cut from the top down to here, so the cards can be pushed out. The slot floor rises toward the front by the stack thickness × sin of the tilt, so the opening bottom stands that much less above the slot floor and must stay at least 1 mm above it. 100 closes the front like a normal wall. The opening widths are the wedge widths.',
     },
     {
       key: 'overhangClearance',
@@ -601,6 +684,14 @@ export const cardTrayTilted: BoxTypeDefinition = {
       default: true,
       group: 'Dispenser',
       help: 'A pocket in the solid back wedge, open through the side walls, to save material; its roof is a short bridge. With wedges in the plates the pocket is sealed around the back wedge by a lining one wall thick.',
+    },
+    {
+      key: 'hollowFront',
+      label: 'Hollow front',
+      kind: 'boolean',
+      default: true,
+      group: 'Dispenser',
+      help: 'A pocket in the solid front block, open through the side walls, like the hollow back; it is sealed around the front access opening by a lining one wall thick.',
     },
     ...tilingParams('x'),
     {
@@ -628,8 +719,8 @@ export const cardTrayTilted: BoxTypeDefinition = {
       step: 0.5,
       unit: 'mm',
       group: 'Wedge',
-      help: 'Width of the wedge at the wall top; 0 = auto (60 % of the span it is cut across: the lane width for the plates, the slot thickness for the side walls).',
-      visibleIf: wedgesOn,
+      help: 'Width of the wedge at the wall top; 0 = auto (60 % of the span it is cut across: the lane width for the plates and the front access opening, the slot thickness for the side walls).',
+      visibleIf: wedgeWidthsOn,
     },
     {
       key: 'wedgeBottomWidth',
@@ -641,7 +732,7 @@ export const cardTrayTilted: BoxTypeDefinition = {
       unit: 'mm',
       group: 'Wedge',
       help: 'Width of the wedge at its lowest point; 0 = auto (40 % of the top width).',
-      visibleIf: wedgesOn,
+      visibleIf: wedgeWidthsOn,
     },
     {
       key: 'wedgeDepth',
@@ -675,16 +766,21 @@ export const cardTrayTilted: BoxTypeDefinition = {
       problems.push(`Exposed height (${g.exposed} mm) must be smaller than the card height (${g.cards.cardHeight} mm).`);
     }
     if (g.overhangClearance < 0) problems.push(`Clearance behind the cards must not be negative (is ${g.overhangClearance}).`);
-    if (g.frontHeight < 0) problems.push(`Front wall height must not be negative (is ${g.frontHeight}).`);
-    else if (g.H > 0 && !(g.frontHeight < g.H)) {
-      problems.push(`Front wall height (${g.frontHeight} mm) must be lower than the inner height (${round(g.H)} mm).`);
+    if (!(g.frontHeightPct >= 0 && g.frontHeightPct <= 100)) {
+      problems.push(`Front wall height must be between 0 % and 100 % of the wall (is ${g.frontHeightPct} %).`);
     }
-    if (g.wedgePlates || g.wedgeSides) {
+    if (g.frontHeightPct >= 0 && !g.frontClosed && g.H > 0 && g.frontHeight < g.T * g.sin + 1) {
+      problems.push(
+        `Front wall height (${g.frontHeightPct} % = ${round(g.frontHeight)} mm) must be at least ${round(g.T * g.sin + 1)} mm (${round(((g.T * g.sin + 1) / g.H) * 100)} %): the front access opening must stay 1 mm above the slot floor's front corner (${round(g.T * g.sin)} mm above the floor).`,
+      );
+    }
+    const frontUsesWedge = !g.frontClosed;
+    if (g.wedgePlates || g.wedgeSides || frontUsesWedge) {
       const sets = [];
-      if (g.wedgePlates) sets.push({ size: g.plateWedge, span: g.depth, what: 'the lane width' });
+      if (g.wedgePlates || frontUsesWedge) sets.push({ size: g.plateWedge, span: g.depth, what: 'the lane width' });
       if (g.wedgeSides) sets.push({ size: g.sideWedge, span: g.T, what: 'the slot thickness' });
       validateWedgeSizes(problems, g.wedgeRaw, item.wall, sets);
-      if (g.wedgeRaw.depth > 0 && g.H > 0 && g.wedgeRaw.depth > g.wedgeMaxDepth) {
+      if ((g.wedgePlates || g.wedgeSides) && g.wedgeRaw.depth > 0 && g.H > 0 && g.wedgeRaw.depth > g.wedgeMaxDepth) {
         problems.push(
           `Wedge depth (${round(g.wedgeRaw.depth)} mm) must not exceed ${round(g.wedgeMaxDepth)} mm (the inner height ${round(g.H)} mm minus the floor under the slots, ${round(g.T * g.sin)} mm, minus 1 mm).`,
         );

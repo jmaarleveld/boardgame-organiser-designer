@@ -27,6 +27,8 @@ type Params = PlacedItem['params'];
 /** Parameter defaults of the deleted v1 types (an omitted param resolved to these). */
 const V1_TRAY_DEFAULTS = { innerWidth: 60, innerDepth: 40, innerHeight: 30 };
 const V1_DIVIDED_DEFAULTS = { innerWidth: 90, innerDepth: 60, innerHeight: 25, columns: 3, rows: 2, dividerThickness: 1.2 };
+/** Defaults of the tilted tray before the front wall height became a percentage (frontHeight in mm). */
+const V1_TILTED_DEFAULTS = { cardHeight: 88, exposedHeight: 20, tiltAngle: 15, frontHeight: 20, frontHeightPct: 50 };
 /** v1 params with no v2 equivalent (finger notches, card tray orientation): dropped. */
 const V1_DROPPED = ['fingerNotch', 'notchSides', 'notchWidth', 'notchDepth', 'orientation'];
 
@@ -62,8 +64,11 @@ function clean(v: number): number {
  *   gapFloorDepth 0: a groove would raise the floor and the outer height).
  * - `card-tray-tilted` of the earlier Y-repeat version (2026-11-06): `rows`
  *   becomes `columns` (the slots now step along X) and `dividerHeight` is
- *   dropped (the tilted dividers are always full height). See
- *   `migrateTiltedTray`.
+ *   dropped (the tilted dividers are always full height). And (2026-11-06)
+ *   `frontHeight` (mm above the floor) becomes `frontHeightPct`
+ *   = round(100 · frontHeight / H, 1 decimal), clamped to [0, 100], with
+ *   H = (cardHeight − exposedHeight)·cos(tiltAngle) from the item's own params
+ *   (defaults 88, 20, 15° for missing keys). See `migrateTiltedTray`.
  * - `card-tray-upright` with the earlier wedge params (2026-11-06): `wedges`
  *   and the `wedgeWalls` select become the two toggles `wedgeEnds` /
  *   `wedgeLong`. See `migrateUprightTray`.
@@ -132,10 +137,22 @@ export function migrateLegacyItem(item: PlacedItem): PlacedItem {
  */
 function migrateTiltedTray(item: PlacedItem): PlacedItem {
   const params = item.params;
-  if (!('rows' in params) && !('dividerHeight' in params)) return item;
-  const rows = Math.round(numParam(params, 'rows', 1));
-  const out = without(params, ['rows', 'dividerHeight']);
-  if (rows >= 2) out.columns = rows;
+  if (!('rows' in params) && !('dividerHeight' in params) && !('frontHeight' in params)) return item;
+  const out = without(params, ['rows', 'dividerHeight', 'frontHeight']);
+  if ('rows' in params) {
+    const rows = Math.round(numParam(params, 'rows', 1));
+    if (rows >= 2) out.columns = rows;
+  }
+  if ('frontHeight' in params) {
+    const d = V1_TILTED_DEFAULTS;
+    const cardHeight = numParam(params, 'cardHeight', d.cardHeight);
+    const exposed = numParam(params, 'exposedHeight', d.exposedHeight);
+    const tilt = numParam(params, 'tiltAngle', d.tiltAngle);
+    const H = (cardHeight - exposed) * Math.cos((tilt * Math.PI) / 180);
+    const mm = numParam(params, 'frontHeight', d.frontHeight);
+    const pct = H > 0 ? Math.round((1000 * mm) / H) / 10 : d.frontHeightPct;
+    out.frontHeightPct = Math.min(100, Math.max(0, pct));
+  }
   return { ...item, params: out };
 }
 
