@@ -1,7 +1,8 @@
 import type { BoxTypeDefinition, KeepOut, TopViewFeature } from '../types';
-import type { ResolvedItem } from '../../model/types';
-import type { GeometryKernel, Solid, Vec2 } from '../../geometry/types';
+import type { ItemParams, ResolvedItem } from '../../model/types';
+import type { Solid } from '../../geometry/types';
 import {
+  AUTO_WEDGE_DEPTH,
   cardDims,
   cardParams,
   EPS,
@@ -12,8 +13,13 @@ import {
   stacking,
   stackingNewItemParams,
   stackingParams,
-  str,
   validateCards,
+  validateWedgeSizes,
+  wedgeCutter,
+  wedgeRaw,
+  wedgeSize,
+  type WallCut,
+  type WedgeSize,
 } from './common';
 import {
   cellFrames,
@@ -31,41 +37,23 @@ import {
   type TiledBoxSpec,
 } from './tiling';
 
-/** Auto wedge depth as a fraction of the inner height (wedgeDepth 0). */
-const AUTO_WEDGE_DEPTH = 0.6;
-/** Auto wedge top width as a fraction of the span of the wall it is cut from (wedgeTopWidth 0). */
-const AUTO_WEDGE_TOP = 0.6;
-/** Auto wedge bottom width as a fraction of the resolved top width (wedgeBottomWidth 0). */
-const AUTO_WEDGE_BOTTOM = 0.4;
-
-/** Which walls get the wedges (param `wedgeWalls`). */
-export const WEDGE_WALLS = ['ends', 'long', 'both'] as const;
-export type WedgeWalls = (typeof WEDGE_WALLS)[number];
-
-/** Resolved trapezoid size for one set of walls. */
-interface WedgeSize {
-  top: number;
-  bottom: number;
-}
-
 /**
  * Geometry of an upright card tray cell: the cards stand portrait, faces
  * looking ±X, stacked along X. Cell X = stackHeight + c, Y = cardWidth + 2c,
  * Z = cardHeight − exposedHeight (the rest sticks out above the wall top).
  *
- * Two grips, chosen by `wedgeWalls`:
- * - `long`: a wedge in the long outer walls (front / back, parallel to X),
- *   centred on the cell's X range. Fingers pinch the stack across the card
- *   width, from the card edges.
- * - `ends` (default): a wedge in the walls perpendicular to the stack (the
- *   outer end walls at X = 0 / max and every divider), centred on the cell's
- *   Y range. Fingers pinch the stack from its first and last card faces.
- * - `both`: both sets.
+ * Two grips, each its own toggle (both off = no wedges):
+ * - `wedgeEnds` (default on): a wedge in the walls perpendicular to the stack
+ *   (the outer end walls at X = 0 / max and every divider), centred on the
+ *   cell's Y range. Fingers pinch the stack from its first and last card faces.
+ * - `wedgeLong` (default off): a wedge in the long outer walls (front / back,
+ *   parallel to X), centred on the cell's X range. Fingers pinch the stack
+ *   across the card width, from the card edges.
  *
  * Wedge sizes resolve relative to the wall span when 0 (auto): top = 60 % of
- * the span the wedge is cut from (cell X span for `long`, cell Y span for
- * `ends`), bottom = 40 % of the resolved top, depth = 60 % of the inner
- * height. Positive values override (the same for both sets). `*Raw` keep the
+ * the span the wedge is cut from (cell X span for the long walls, cell Y span
+ * for the ends), bottom = 40 % of the resolved top, depth = 60 % of the inner
+ * height. Positive values override (the same for both sets). `raw` keeps the
  * entered values for validation.
  */
 function geom(item: ResolvedItem) {
@@ -75,52 +63,27 @@ function geom(item: ResolvedItem) {
   const height = cards.cardHeight - exposed;
   const width = cards.stackHeight + c;
   const depth = cards.cardWidth + 2 * c;
-  const wedgeTopRaw = num(item, 'wedgeTopWidth', 0);
-  const wedgeBottomRaw = num(item, 'wedgeBottomWidth', 0);
-  const wedgeDepthRaw = num(item, 'wedgeDepth', 0);
-  const size = (span: number): WedgeSize => {
-    const top = wedgeTopRaw > 0 ? wedgeTopRaw : AUTO_WEDGE_TOP * span;
-    return { top, bottom: wedgeBottomRaw > 0 ? wedgeBottomRaw : AUTO_WEDGE_BOTTOM * top };
-  };
-  const wedgeWalls = str(item, 'wedgeWalls', WEDGE_WALLS, 'ends');
+  const raw = wedgeRaw(item);
+  const cutEnds = bool(item, 'wedgeEnds', true);
+  const cutLong = bool(item, 'wedgeLong', false);
   return {
     cards,
     exposed,
     width,
     depth,
     height,
-    wedges: bool(item, 'wedges', true),
-    wedgeWalls,
-    cutLong: wedgeWalls !== 'ends',
-    cutEnds: wedgeWalls !== 'long',
-    wedgeTopRaw,
-    wedgeBottomRaw,
+    cutLong,
+    cutEnds,
+    raw,
     /** Sizes for the long walls (relative to the cell X span) and the end walls / dividers (cell Y span). */
-    long: size(width),
-    ends: size(depth),
-    wedgeDepthRaw,
-    wedgeDepth: wedgeDepthRaw > 0 ? wedgeDepthRaw : AUTO_WEDGE_DEPTH * height,
+    long: wedgeSize(raw, width),
+    ends: wedgeSize(raw, depth),
+    wedgeDepth: raw.depth > 0 ? raw.depth : AUTO_WEDGE_DEPTH * height,
   };
 }
 
 type Geom = ReturnType<typeof geom>;
 type Side = 'left' | 'right' | 'front' | 'back';
-
-/**
- * One wedge cut: the wall material occupies [a0, a0 + t] along `across`
- * (the axis through the wall: 'y' for front / back, 'x' for left / right);
- * the trapezoid is centred on `c` along the other horizontal axis.
- */
-interface WallCut {
-  across: 'x' | 'y';
-  a0: number;
-  t: number;
-  c: number;
-  size: WedgeSize;
-  zTop: number;
-  zBot: number;
-  zCap: number;
-}
 
 /**
  * The wedge cuts of one cell. Long walls: front / back, only when outer.
@@ -171,51 +134,6 @@ function wallCuts(f: CellFrame, g: Geom, wall: number): WallCut[] {
   return out;
 }
 
-/**
- * Wedge cutter: a trapezoid, `top` wide at the top of the wall and `bottom`
- * wide at zBot, centred on `c`; above the top it continues straight up to
- * zCap (through the lip, +EPS). Extruded through the wall thickness with EPS
- * overshoot on both faces (outside the part and into the cavity, which is cut
- * anyway).
- *
- * Built as an XY polygon (x = along the wall, y standing for Z) extruded
- * along +Z, then rotated so the extrusion runs through the wall:
- * - across 'y' (front / back): rotate +90° about X, (u, v, w) → (u, −w, v),
- *   extrusion along −Y;
- * - across 'x' (left / right): additionally +90° about Z, → (w, u, v),
- *   extrusion along +X.
- */
-function wedgeCutter(kernel: GeometryKernel, w: WallCut): Solid {
-  const tw = w.size.top / 2;
-  const bw = w.size.bottom / 2;
-  const { c, zTop, zBot, zCap } = w;
-  const poly: Vec2[] =
-    bw > 0
-      ? [
-          [c - bw, zBot],
-          [c + bw, zBot],
-          [c + tw, zTop],
-          [c + tw, zCap],
-          [c - tw, zCap],
-          [c - tw, zTop],
-        ]
-      : [
-          [c, zBot],
-          [c + tw, zTop],
-          [c + tw, zCap],
-          [c - tw, zCap],
-          [c - tw, zTop],
-        ];
-  const len = w.t + 2 * EPS;
-  const prism = kernel.extrude(poly, len);
-  if (w.across === 'y') {
-    // Y ∈ [−len, 0] after the rotation.
-    return kernel.translate(kernel.rotate(prism, [90, 0, 0]), [0, w.a0 - EPS + len, 0]);
-  }
-  // X ∈ [0, len] after the rotation.
-  return kernel.translate(kernel.rotate(prism, [90, 0, 90]), [w.a0 - EPS, 0, 0]);
-}
-
 /** Mini-map notch: the top width × the wall thickness, where the wedge meets the top. */
 function notchOf(w: WallCut): TopViewFeature {
   return w.across === 'y'
@@ -224,7 +142,7 @@ function notchOf(w: WallCut): TopViewFeature {
 }
 
 function hasWedges(g: Geom): boolean {
-  return g.wedges && g.wedgeDepth > 0 && (!g.cutLong || g.long.top > 0) && (!g.cutEnds || g.ends.top > 0);
+  return (g.cutLong || g.cutEnds) && g.wedgeDepth > 0 && (!g.cutLong || g.long.top > 0) && (!g.cutEnds || g.ends.top > 0);
 }
 
 /**
@@ -254,6 +172,9 @@ function spec(item: ResolvedItem): TiledBoxSpec {
   };
 }
 
+/** The wedge size params are shown when either toggle is on. */
+const wedgesOn = (p: ItemParams): boolean => p.wedgeEnds !== false || p.wedgeLong === true;
+
 export const cardTrayUpright: BoxTypeDefinition = {
   id: 'card-tray-upright',
   name: 'Card tray (upright)',
@@ -274,29 +195,20 @@ export const cardTrayUpright: BoxTypeDefinition = {
     ...tilingParams('x'),
     { ...dividerHeightParam, visibleIf: (p) => Number(p.columns) > 1 },
     {
-      key: 'wedges',
-      label: 'Wedges',
+      key: 'wedgeEnds',
+      label: 'Wedges in the end walls and dividers',
       kind: 'boolean',
       default: true,
       group: 'Wedge',
-      help: 'Cut a wedge into the top of the walls around every stack, to grab the cards.',
+      help: 'A wedge in every wall between and at the ends of the stacks, centred on the card width: pinch the stack by its first and last card.',
     },
     {
-      key: 'wedgeWalls',
-      label: 'Wedged walls',
-      kind: 'select',
-      default: 'ends',
-      options: [
-        { value: 'ends', label: 'End walls and dividers: pinch across the stack' },
-        { value: 'long', label: 'Long walls: pinch across the card width' },
-        { value: 'both', label: 'Both' },
-      ],
+      key: 'wedgeLong',
+      label: 'Wedges in the long walls',
+      kind: 'boolean',
+      default: false,
       group: 'Wedge',
-      help:
-        'End walls and dividers: a wedge in every wall between and at the ends of the stacks, centred on the card width; ' +
-        'grab the stack by its first and last card. Long walls: a wedge in the front and back wall of every stack; ' +
-        'grab the cards by their edges.',
-      visibleIf: (p) => p.wedges !== false,
+      help: 'A wedge in the front and back wall of every stack: pinch the cards by their edges, across the card width.',
     },
     {
       key: 'wedgeTopWidth',
@@ -308,7 +220,7 @@ export const cardTrayUpright: BoxTypeDefinition = {
       unit: 'mm',
       group: 'Wedge',
       help: 'Width of the wedge at the wall top; 0 = auto (60 % of the wall span it is cut from: the card slot width for end walls and dividers, the stack slot width for long walls).',
-      visibleIf: (p) => p.wedges !== false,
+      visibleIf: wedgesOn,
     },
     {
       key: 'wedgeBottomWidth',
@@ -320,7 +232,7 @@ export const cardTrayUpright: BoxTypeDefinition = {
       unit: 'mm',
       group: 'Wedge',
       help: 'Width of the wedge at its lowest point; 0 = auto (40 % of the top width).',
-      visibleIf: (p) => p.wedges !== false,
+      visibleIf: wedgesOn,
     },
     {
       key: 'wedgeDepth',
@@ -332,7 +244,7 @@ export const cardTrayUpright: BoxTypeDefinition = {
       unit: 'mm',
       group: 'Wedge',
       help: 'How far the wedge reaches down from the wall top; 0 = auto (60 % of the inner height). On lowered dividers it is clamped to leave material above the floor.',
-      visibleIf: (p) => p.wedges !== false,
+      visibleIf: wedgesOn,
     },
     ...stackingParams,
   ],
@@ -350,31 +262,11 @@ export const cardTrayUpright: BoxTypeDefinition = {
     if (!(g.height > 0)) {
       problems.push(`Exposed height (${g.exposed} mm) must be smaller than the card height (${g.cards.cardHeight} mm).`);
     }
-    if (g.wedges) {
-      if (g.wedgeTopRaw < 0) problems.push(`Wedge top width must not be negative (is ${g.wedgeTopRaw}).`);
-      if (g.wedgeBottomRaw < 0) problems.push(`Wedge bottom width must not be negative (is ${g.wedgeBottomRaw}).`);
-      if (g.wedgeDepthRaw < 0) problems.push(`Wedge depth must not be negative (is ${g.wedgeDepthRaw}).`);
-      // Leave a post at least max(wall, 1) mm wide on both sides of the wedge (between neighbours and at the ends).
-      const post = Math.max(item.wall, 1);
+    if (g.cutEnds || g.cutLong) {
       const sets: { size: WedgeSize; span: number; what: string }[] = [];
       if (g.cutLong) sets.push({ size: g.long, span: g.width, what: 'the stack slot width' });
       if (g.cutEnds) sets.push({ size: g.ends, span: g.depth, what: 'the card slot width' });
-      if (g.wedgeBottomRaw > 0) {
-        const top = Math.min(...sets.map((x) => x.size.top));
-        if (g.wedgeBottomRaw > top) {
-          problems.push(`Wedge bottom width (${round(g.wedgeBottomRaw)} mm) must not exceed the top width (${round(top)} mm).`);
-        }
-      }
-      if (g.wedgeTopRaw > 0) {
-        for (const { span, what } of sets) {
-          const maxTop = span - 2 * post;
-          if (g.wedgeTopRaw >= maxTop) {
-            problems.push(
-              `Wedge top width (${round(g.wedgeTopRaw)} mm) must be smaller than ${round(maxTop)} mm (${what} ${round(span)} mm minus ${round(post)} mm on each side) so wall remains beside the wedges.`,
-            );
-          }
-        }
-      }
+      validateWedgeSizes(problems, g.raw, item.wall, sets);
       if (g.height > 0 && g.wedgeDepth > g.height) {
         problems.push(`Wedge depth (${round(g.wedgeDepth)} mm) must not exceed the inner height (${round(g.height)} mm).`);
       }

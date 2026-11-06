@@ -96,7 +96,7 @@ describe('stack fit: bearing on open trays', () => {
     const low = stack(
       [
         // Three 58.4 × 40 slots along X; the box sits inside the middle slot's Y span and only over a low divider in X.
-        it_('div', 'card-tray-upright', 1, 1, { columns: 3, dividerHeight: 20, stackHeight: 58.4, clearance: 0, cardWidth: 40, cardHeight: 30, exposedHeight: 0, wedges: false, dividerThickness: 1.6 }),
+        it_('div', 'card-tray-upright', 1, 1, { columns: 3, dividerHeight: 20, stackHeight: 58.4, clearance: 0, cardWidth: 40, cardHeight: 30, exposedHeight: 0, wedgeEnds: false, dividerThickness: 1.6 }),
         it_('box', 'item-tray', 62.6, 10.6, { innerDepth: 20 }),
       ],
       1,

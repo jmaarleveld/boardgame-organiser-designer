@@ -5,7 +5,7 @@ import type { ItemParams, PlacedItem, ProjectSettings, ResolvedItem } from '../m
 import { DEFAULT_SETTINGS } from '../model/types';
 import { effectiveTop } from '../model/layout';
 import { defaultParams, keepOutOf, newItemParams, type BoxTypeDefinition } from './types';
-import { cardTrayTilted, tiltedGeom, tiltedPitch } from './definitions/card-tray-tilted';
+import { cardTrayTilted, pocketProfile, tiltedGeom, tiltedPitch } from './definitions/card-tray-tilted';
 import { findBoxType, registerBoxType } from './registry';
 
 let k: GeometryKernel;
@@ -109,7 +109,8 @@ describe('card-tray-tilted', () => {
   it('the slot is tilted: material behind it at the bottom, none at the top', () => {
     for (const tiltAngle of [5, 15, 30]) {
       for (const p of [{}, { stackTop: 'lip', stackBottom: 'plug' }] as ItemParams[]) {
-        const it = item({ tiltAngle, ...p });
+        // Solid back, no wedges: the slot geometry alone.
+        const it = item({ tiltAngle, hollowBack: false, wedgePlates: false, ...p });
         const s = build(it);
         const g = tiltedGeom(it);
         const plug = p.stackBottom === 'plug' ? 2 : 0;
@@ -137,7 +138,7 @@ describe('card-tray-tilted', () => {
 
   it('tilted dividers between the slots: full height, bottom to top', () => {
     for (const tiltAngle of [5, 15, 30]) {
-      const it = item({ tiltAngle, columns: 3, stackTop: 'lip' });
+      const it = item({ tiltAngle, columns: 3, stackTop: 'lip', wedgePlates: false });
       const s = build(it);
       const g = tiltedGeom(it);
       const pitch = tiltedPitch(it);
@@ -166,7 +167,7 @@ describe('card-tray-tilted', () => {
   });
 
   it('draw: slot openings, tilted dividers, shelf and front notch inside the footprint', () => {
-    const it = item({ columns: 3 });
+    const it = item({ columns: 3, wedgePlates: false });
     const g = tiltedGeom(it);
     const pitch = tiltedPitch(it);
     const fp = def.footprint(it);
@@ -294,5 +295,313 @@ describe('card-tray-tilted', () => {
     expect(v({ columns: 1.5 })).toContain('Columns must be a whole number ≥ 1 (is 1.5).');
     expect(v({ columns: 2, dividerThickness: 0 })).toEqual(['Divider thickness must be greater than 0 (is 0).']);
     expect(v({ columns: 1, dividerThickness: 0 })).toEqual([]);
+  });
+  it('valid manifold, bounds = footprint with the hollow back and every wedge combination', () => {
+    for (const columns of [1, 2, 3]) {
+      for (const tiltAngle of [5, 15, 30]) {
+        for (const hollowBack of [true, false]) {
+          for (const [wedgePlates, wedgeSides] of [
+            [true, false],
+            [false, false],
+            [true, true],
+            [false, true],
+          ]) {
+            const it = item({ columns, tiltAngle, hollowBack, wedgePlates, wedgeSides });
+            build(it);
+            expect(def.validate!(it)).toEqual([]);
+          }
+        }
+      }
+    }
+    for (const st of [
+      { stackTop: 'lip', stackBottom: 'recess' },
+      { stackTop: 'lip', stackBottom: 'plug' },
+      { stackBottom: 'recess' },
+    ] as ItemParams[]) {
+      for (const columns of [1, 3]) {
+        for (const tiltAngle of [5, 15, 30, 40]) {
+          const it = item({ columns, tiltAngle, wedgeSides: true, ...st });
+          build(it);
+          expect(def.validate!(it)).toEqual([]);
+        }
+      }
+    }
+  });
+
+  it('hollow back: a pocket between the outer back wall and the leaning plate, open through the side walls', () => {
+    const it = item({ wedgePlates: false });
+    const s = build(it);
+    const g = tiltedGeom(it);
+    const fp = def.footprint(it);
+    const yc = WALL + g.depth / 2;
+    const z = FLOOR + g.H / 2;
+    // Air in the pocket, also inside both side walls (the pocket runs through them).
+    for (const y of [yc, 0.5, fp.depth - 0.5, 0.1]) expect(material(s, WALL + 1, y, z)).toBeLessThan(1e-9);
+    // The outer back wall at x = 0.8 stays.
+    expect(material(s, 0.8, yc, z)).toBeCloseTo(FULL, 9);
+    expect(material(s, 0.8, 0.5, z)).toBeCloseTo(FULL, 9);
+    // The leaning plate just behind the slot: wall / cos θ thick horizontally.
+    const xb = (zz: number) => WALL + g.back + (g.H - zz) * g.tan;
+    for (const zz of [3, g.H / 2, g.H - 3]) {
+      expect(material(s, xb(zz) - 0.3, yc, FLOOR + zz)).toBeCloseTo(FULL, 9);
+      expect(material(s, xb(zz) - WALL / g.cos + 0.3, yc, FLOOR + zz)).toBeCloseTo(FULL, 9);
+      expect(material(s, xb(zz) - WALL / g.cos - 0.3, yc, FLOOR + zz)).toBeLessThan(1e-9);
+    }
+    // The roof: solid at topZ − 0.5 across the back, the pocket ends at topZ − wall.
+    for (const x of [WALL + 0.5, WALL + g.back / 2]) {
+      expect(material(s, x, yc, FLOOR + g.H - 0.5)).toBeCloseTo(FULL, 9);
+      expect(material(s, x, 0.5, FLOOR + g.H - 0.5)).toBeCloseTo(FULL, 9);
+      expect(material(s, x, yc, FLOOR + g.H - WALL - 0.2)).toBeLessThan(1e-9);
+    }
+    // The structural floor stays under the pocket.
+    expect(material(s, WALL + 1, yc, FLOOR - 0.3)).toBeCloseTo(FULL, 9);
+    expect(material(s, WALL + 1, yc, FLOOR + 0.2)).toBeLessThan(1e-9);
+    // Only cell 0: with 3 columns the dividers are solid (no pocket in front of slot 0).
+    const it3 = item({ columns: 3, wedgePlates: false });
+    const s3 = build(it3);
+    const pitch = tiltedPitch(it3);
+    const mid = WALL + g.back + pitch + (g.H - g.H / 2) * g.tan - (pitch - g.s) / 2;
+    expect(material(s3, mid, 0.5, z)).toBeCloseTo(FULL, 9);
+  });
+
+  it('hollow back: the pocket saves its trapezoid × the outer depth', () => {
+    for (const tiltAngle of [5, 15, 30]) {
+      for (const columns of [1, 3]) {
+        const it = item({ tiltAngle, columns, wedgePlates: false });
+        const g = tiltedGeom(it);
+        const fp = def.footprint(it);
+        const solid = k.volume(def.build(item({ tiltAngle, columns, wedgePlates: false, hollowBack: false }), k));
+        const hollow = k.volume(build(it));
+        const wTop = g.back + WALL * g.tan - WALL / g.cos;
+        const wBot = g.back + g.H * g.tan - WALL / g.cos;
+        const area = ((g.H - WALL) * (wTop + wBot)) / 2;
+        expect(solid - hollow).toBeCloseTo(area * fp.depth, 2);
+        expect(pocketProfile(g, WALL, FLOOR, FLOOR + g.H)).not.toBeNull();
+      }
+    }
+    // Default 15° tray: report the saving.
+    const it = item();
+    const saved = k.volume(def.build(item({ hollowBack: false }), k)) - k.volume(def.build(it, k));
+    expect(saved).toBeGreaterThan(5000);
+  });
+
+  it('with a recessed base the pocket starts above the recess ring', () => {
+    // Recess 2.15 deep; the pocket bottom is at 2.15 + 0.4, so the side-wall hole never opens into the ring.
+    const s = build(item({ stackTop: 'lip', stackBottom: 'recess', wedgePlates: false }));
+    const x = WALL + 1.5;
+    const y = 10;
+    expect(material(s, x, y, 2.15 + 0.2)).toBeCloseTo(FULL, 6); // below the pocket: solid
+    expect(material(s, x, y, 2.15 + 0.4 + 0.3)).toBeCloseTo(0, 6); // inside the pocket: air
+    expect(material(s, x, 0.1, 2.15 + 0.2)).toBeCloseTo(FULL, 6); // side wall above the recess, below the pocket: solid
+    expect(material(s, x, 0.1, 2.15 + 0.4 + 0.3)).toBeCloseTo(0, 6); // the hole through the side wall
+  });
+
+  it('hollow back is skipped where the pocket would be thinner than 1 mm', () => {
+    // 40°, no exposed cards, no clearance: back = 0, the pocket would have no width at the roof.
+    const p = { tiltAngle: 40, exposedHeight: 0, overhangClearance: 0, wedgePlates: false };
+    const g = tiltedGeom(item(p));
+    expect(pocketProfile(g, WALL, FLOOR, FLOOR + g.H)).toBeNull();
+    expect(k.volume(build(item(p)))).toBeCloseTo(k.volume(build(item({ ...p, hollowBack: false }))), 6);
+    // 5° with a little exposed card: back + wall·tan θ − wall / cos θ < 1.
+    const thin = { tiltAngle: 5, exposedHeight: 5, overhangClearance: 0.5, wedgePlates: false };
+    expect(pocketProfile(tiltedGeom(item(thin)), WALL, FLOOR, FLOOR + tiltedGeom(item(thin)).H)).toBeNull();
+    expect(k.volume(build(item(thin)))).toBeCloseTo(k.volume(build(item({ ...thin, hollowBack: false }))), 6);
+  });
+
+  it('plate wedges: cut at the lane centre from the top of the back plate and of every divider', () => {
+    for (const tiltAngle of [5, 15, 30]) {
+      const it = item({ tiltAngle, columns: 3, stackTop: 'lip' });
+      const s = build(it);
+      const g = tiltedGeom(it);
+      const pitch = tiltedPitch(it);
+      const fp = def.footprint(it);
+      const yc = WALL + g.depth / 2;
+      const yEdge = WALL + 1.5;
+      const z = FLOOR + g.H - 0.5;
+      const xb = (i: number, zz: number) => WALL + g.back + i * pitch + (g.H - zz) * g.tan;
+      // Back plate (cell 0): the roof / back block and the back lip.
+      expect(material(s, WALL + g.back - 0.5, yc, z)).toBeLessThan(1e-9);
+      expect(material(s, WALL + g.back - 0.5, yEdge, z)).toBeCloseTo(FULL, 9);
+      expect(material(s, WALL / 4, yc, fp.height - 0.3)).toBeLessThan(1e-9);
+      expect(material(s, WALL / 4, yEdge, fp.height - 0.3)).toBeCloseTo(FULL, 9);
+      // Dividers 1, 2 (behind slots 1, 2) at their top.
+      for (const i of [1, 2]) {
+        const x = xb(i, g.H - 0.5) - (pitch - g.s) / 2;
+        expect(material(s, x, yc, z)).toBeLessThan(1e-9);
+        expect(material(s, x, yEdge, z)).toBeCloseTo(FULL, 9);
+        // Below the wedge bottom the divider is whole again.
+        const zz = g.H - g.wedgeDepth - 1;
+        expect(material(s, xb(i, zz) - (pitch - g.s) / 2, yc, FLOOR + zz)).toBeCloseTo(FULL, 9);
+      }
+      // The front stub of the last cell keeps its material below frontHeight.
+      expect(material(s, fp.width - WALL / 2, yc, FLOOR + 18)).toBeCloseTo(FULL, 9);
+      // The wedge depth is 60 % of H.
+      expect(g.wedgeDepth).toBeCloseTo(0.6 * g.H, 9);
+      expect(g.plateWedge.top).toBeCloseTo(0.6 * g.depth, 9);
+      expect(g.plateWedge.bottom).toBeCloseTo(0.4 * 0.6 * g.depth, 9);
+    }
+    // Steep tilt with a thick stack: the auto depth is clamped 1 mm above the floor wedge under the slots.
+    const steep = tiltedGeom(item({ tiltAngle: 40 }));
+    expect(steep.wedgeDepth).toBeCloseTo(Math.min(0.6 * steep.H, steep.H - steep.T * steep.sin - 1), 9);
+    expect(steep.wedgeDepth).toBeLessThan(0.6 * steep.H);
+  });
+
+  it('side wedges: a cut in both side walls at every slot, tilted with the cards', () => {
+    for (const tiltAngle of [5, 15, 30]) {
+      const it = item({ tiltAngle, columns: 2, stackTop: 'lip', wedgePlates: false, wedgeSides: true });
+      const s = build(it);
+      const g = tiltedGeom(it);
+      const pitch = tiltedPitch(it);
+      const fp = def.footprint(it);
+      const plain = build(item({ tiltAngle, columns: 2, stackTop: 'lip', wedgePlates: false }));
+      expect(g.sideWedge.top).toBeCloseTo(0.6 * g.T, 9);
+      for (const i of [0, 1]) {
+        const xc = WALL + g.back + i * pitch + g.s / 2; // slot centre at the wall top
+        for (const y of [WALL / 2, fp.depth - WALL / 2]) {
+          expect(material(s, xc, y, FLOOR + g.H - 0.5)).toBeLessThan(1e-9);
+          expect(material(plain, xc, y, FLOOR + g.H - 0.5)).toBeCloseTo(FULL, 9);
+          // Through the lip.
+          expect(material(s, xc, WALL / 4, fp.height - 0.3)).toBeLessThan(1e-9);
+          // Down along the cards: the trapezoid centre line leans back with the slot.
+          const d = g.wedgeDepth - 2;
+          const xd = xc + d * g.sin; // down along −u = (sin θ, 0, −cos θ)
+          const zd = FLOOR + g.H - d * g.cos;
+          expect(material(s, xd, y, zd)).toBeLessThan(1e-9);
+          // Below the wedge: wall.
+          const d2 = g.wedgeDepth + 2;
+          expect(material(s, xc + d2 * g.sin, y, FLOOR + g.H - d2 * g.cos)).toBeCloseTo(FULL, 9);
+        }
+        // Beside the cut, at the slot's back face and the divider, the side wall stays.
+        expect(material(s, WALL + g.back + i * pitch + 0.4, WALL / 2, FLOOR + g.H - 0.5)).toBeCloseTo(FULL, 9);
+      }
+      // The lane between the side walls is not touched beyond the slot.
+      expect(material(s, WALL + g.back + g.s + (pitch - g.s) / 2, WALL + 1, FLOOR + g.H - 0.5)).toBeCloseTo(FULL, 9);
+    }
+  });
+
+  it('wedge volumes: the side wedges remove the tilted trapezoid below the wall top, × wall, twice per slot', () => {
+    for (const tiltAngle of [5, 15, 30]) {
+      const base = { columns: 2, tiltAngle, wedgePlates: false };
+      const it = item({ ...base, wedgeSides: true, wedgeDepth: 20 });
+      const g = tiltedGeom(it);
+      const cut = k.volume(def.build(item(base), k)) - k.volume(build(it));
+      // The cutter profile in the slot frame (x across, z along the cards), continued along u above its
+      // top edge, mapped to world XZ (relative to the slot corner) and clipped at the wall top z = H.
+      const tw = g.sideWedge.top / 2;
+      const bw = g.sideWedge.bottom / 2;
+      const cx = g.T / 2;
+      const zc = (g.H - cx * g.sin) / g.cos;
+      const local: [number, number][] = [
+        [cx - bw, zc - 20],
+        [cx + bw, zc - 20],
+        [cx + tw, zc],
+        [cx + tw, zc + 50],
+        [cx - tw, zc + 50],
+        [cx - tw, zc],
+      ];
+      const world = local.map(([x, z]): [number, number] => [x * g.cos - z * g.sin, x * g.sin + z * g.cos]);
+      const clipped: [number, number][] = [];
+      for (let i = 0; i < world.length; i++) {
+        const p = world[i];
+        const q = world[(i + 1) % world.length];
+        if (p[1] <= g.H) clipped.push(p);
+        if (p[1] <= g.H !== q[1] <= g.H) {
+          const t = (g.H - p[1]) / (q[1] - p[1]);
+          clipped.push([p[0] + t * (q[0] - p[0]), g.H]);
+        }
+      }
+      let area = 0;
+      for (let i = 0; i < clipped.length; i++) {
+        const [x0, z0] = clipped[i];
+        const [x1, z1] = clipped[(i + 1) % clipped.length];
+        area += (x0 * z1 - x1 * z0) / 2;
+      }
+      expect(cut).toBeCloseTo(2 * 2 * Math.abs(area) * WALL, 2);
+      // Close to the plain trapezoid; the lean adds a sliver at the top.
+      expect(cut).toBeGreaterThanOrEqual(2 * 2 * (tw + bw) * 20 * WALL - 1e-6);
+    }
+  });
+
+  it('draw: wedge notches', () => {
+    const it = item({ columns: 3, wedgeSides: true });
+    const g = tiltedGeom(it);
+    const pitch = tiltedPitch(it);
+    const fp = def.footprint(it);
+    const notches = def.draw(it).filter((f) => f.kind === 'rect' && f.role === 'notch');
+    // Front opening + 3 plate wedges + 2 · 3 side wedges.
+    expect(notches).toHaveLength(1 + 3 + 6);
+    const plate = notches.filter((n) => n.kind === 'rect' && Math.abs(n.h - g.plateWedge.top) < 1e-9);
+    expect(plate).toHaveLength(3);
+    plate.forEach((n, i) => {
+      if (n.kind !== 'rect') return;
+      expect(n.y + n.h / 2).toBeCloseTo(WALL + g.depth / 2, 9);
+      const xTop = WALL + g.back + i * pitch;
+      if (i === 0) {
+        expect(n.x).toBeCloseTo(0, 9);
+        expect(n.w).toBeCloseTo(WALL + g.back, 9);
+      } else {
+        expect(n.x).toBeCloseTo(xTop - (pitch - g.s), 9);
+        expect(n.w).toBeCloseTo(pitch - g.s, 9);
+      }
+    });
+    const side = notches.filter((n) => n.kind === 'rect' && Math.abs(n.h - WALL) < 1e-9);
+    expect(side).toHaveLength(6);
+    for (const n of side) {
+      if (n.kind !== 'rect') continue;
+      expect(n.w).toBeCloseTo(g.sideWedge.top / g.cos, 9);
+      expect([0, fp.depth - WALL]).toContainEqual(expect.closeTo(n.y, 9));
+      const i = Math.round((n.x + n.w / 2 - WALL - g.back - g.s / 2) / pitch);
+      expect(n.x + n.w / 2).toBeCloseTo(WALL + g.back + i * pitch + g.s / 2, 9);
+    }
+    // No wedges: only the front notch.
+    expect(def.draw(item({ columns: 3, wedgePlates: false })).filter((f) => f.kind === 'rect' && f.role === 'notch')).toHaveLength(1);
+    for (const f of def.draw(it)) {
+      if (f.kind !== 'rect') continue;
+      expect(f.x).toBeGreaterThanOrEqual(-1e-9);
+      expect(f.y).toBeGreaterThanOrEqual(-1e-9);
+      expect(f.x + f.w).toBeLessThanOrEqual(fp.width + 1e-9);
+      expect(f.y + f.h).toBeLessThanOrEqual(fp.depth + 1e-9);
+    }
+  });
+
+  it('params: hollow back and the wedge toggles', () => {
+    expect(def.params.find((p) => p.key === 'hollowBack')).toMatchObject({ kind: 'boolean', default: true, label: 'Hollow back', group: 'Dispenser' });
+    expect(def.params.find((p) => p.key === 'wedgePlates')).toMatchObject({
+      kind: 'boolean',
+      default: true,
+      label: 'Wedges in the leaning plates',
+      group: 'Wedge',
+    });
+    expect(def.params.find((p) => p.key === 'wedgeSides')).toMatchObject({ kind: 'boolean', default: false, label: 'Wedges in the side walls', group: 'Wedge' });
+    for (const key of ['wedgeTopWidth', 'wedgeBottomWidth', 'wedgeDepth']) {
+      const p = def.params.find((x) => x.key === key)!;
+      expect(p).toMatchObject({ default: 0, group: 'Wedge' });
+      expect(p.visibleIf!({ wedgePlates: true, wedgeSides: false })).toBe(true);
+      expect(p.visibleIf!({ wedgePlates: false, wedgeSides: true })).toBe(true);
+      expect(p.visibleIf!({ wedgePlates: false, wedgeSides: false })).toBe(false);
+    }
+  });
+
+  it('validation: wedge sizes and the recess next to the pocket', () => {
+    const msg = (p: ItemParams, wall = WALL, floor = FLOOR) => def.validate!(item(p, wall, floor)).join(' ');
+    const g = tiltedGeom(item());
+    // Lane 65.5, wall 1.6: the plate wedge top must stay below 62.3; the slot (31) below 27.8 with side wedges.
+    expect(msg({ wedgeTopWidth: 62.3 })).toMatch(/Wedge top width \(62\.3 mm\) must be smaller than 62\.3 mm \(the lane width 65\.5 mm/);
+    expect(def.validate!(item({ wedgeTopWidth: 62 }))).toEqual([]);
+    expect(msg({ wedgeTopWidth: 30, wedgeSides: true })).toMatch(/smaller than 27\.8 mm \(the slot thickness 31 mm/);
+    expect(def.validate!(item({ wedgeTopWidth: 30, wedgePlates: false, wedgeSides: false }))).toEqual([]);
+    expect(msg({ wedgeTopWidth: 20, wedgeBottomWidth: 21 })).toMatch(/Wedge bottom width \(21 mm\) must not exceed the top width \(20 mm\)/);
+    // Auto tops: plates 39.3, sides 18.6.
+    expect(def.validate!(item({ wedgeBottomWidth: 19 }))).toEqual([]);
+    expect(msg({ wedgeBottomWidth: 19, wedgeSides: true })).toMatch(/must not exceed the top width \(18\.6 mm\)/);
+    expect(msg({ wedgeTopWidth: -1 })).toMatch(/Wedge top width must not be negative/);
+    expect(msg({ wedgeDepth: -1 })).toMatch(/Wedge depth must not be negative/);
+    const max = g.H - g.T * g.sin - 1;
+    expect(msg({ wedgeDepth: 60 })).toMatch(new RegExp(`Wedge depth \\(60 mm\\) must not exceed ${Math.round(max * 100) / 100} mm`));
+    expect(def.validate!(item({ wedgeDepth: Math.floor(max) }))).toEqual([]);
+    expect(def.validate!(item({ wedgeDepth: Math.floor(max), wedgeSides: true }))).toEqual([]);
+    // Both toggles off: the wedge checks are skipped.
+    expect(def.validate!(item({ wedgePlates: false, wedgeTopWidth: 80, wedgeBottomWidth: 90, wedgeDepth: 100 }))).toEqual([]);
+    expect(def.validate!(item({ stackTop: 'lip', stackBottom: 'recess' }))).toEqual([]);
   });
 });

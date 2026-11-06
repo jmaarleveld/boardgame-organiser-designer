@@ -396,3 +396,128 @@ export function validateCards(problems: string[], c: CardDims): void {
   requirePositive(problems, 'Stack thickness', c.stackHeight);
   if (c.clearance < 0) problems.push(`Clearance must not be negative (is ${c.clearance}).`);
 }
+
+/* ---------------------------------------------------------------- wedges */
+
+/** Auto wedge depth as a fraction of the inner height (wedgeDepth 0). */
+export const AUTO_WEDGE_DEPTH = 0.6;
+/** Auto wedge top width as a fraction of the span of the wall it is cut from (wedgeTopWidth 0). */
+export const AUTO_WEDGE_TOP = 0.6;
+/** Auto wedge bottom width as a fraction of the resolved top width (wedgeBottomWidth 0). */
+export const AUTO_WEDGE_BOTTOM = 0.4;
+
+/** Resolved trapezoid size for one set of walls. */
+export interface WedgeSize {
+  top: number;
+  bottom: number;
+}
+
+/** Entered wedge sizes (`wedgeTopWidth`, `wedgeBottomWidth`, `wedgeDepth`; 0 = auto). */
+export interface WedgeRaw {
+  top: number;
+  bottom: number;
+  depth: number;
+}
+
+export function wedgeRaw(item: ResolvedItem): WedgeRaw {
+  return { top: num(item, 'wedgeTopWidth', 0), bottom: num(item, 'wedgeBottomWidth', 0), depth: num(item, 'wedgeDepth', 0) };
+}
+
+/** Wedge size for a wall `span` wide: explicit values, or top 60 % of the span and bottom 40 % of the top. */
+export function wedgeSize(raw: WedgeRaw, span: number): WedgeSize {
+  const top = raw.top > 0 ? raw.top : AUTO_WEDGE_TOP * span;
+  return { top, bottom: raw.bottom > 0 ? raw.bottom : AUTO_WEDGE_BOTTOM * top };
+}
+
+/**
+ * Validation of the wedge sizes: non-negative values, an explicit bottom <=
+ * the smallest top in use, an explicit top < span − 2·max(wall, 1) for every
+ * wall set in use (so a post remains beside the wedges). The depth range is
+ * the type's business.
+ */
+export function validateWedgeSizes(
+  problems: string[],
+  raw: WedgeRaw,
+  wall: number,
+  sets: { size: WedgeSize; span: number; what: string }[],
+): void {
+  if (raw.top < 0) problems.push(`Wedge top width must not be negative (is ${raw.top}).`);
+  if (raw.bottom < 0) problems.push(`Wedge bottom width must not be negative (is ${raw.bottom}).`);
+  if (raw.depth < 0) problems.push(`Wedge depth must not be negative (is ${raw.depth}).`);
+  const post = Math.max(wall, 1);
+  if (raw.bottom > 0 && sets.length) {
+    const top = Math.min(...sets.map((x) => x.size.top));
+    if (raw.bottom > top) {
+      problems.push(`Wedge bottom width (${round(raw.bottom)} mm) must not exceed the top width (${round(top)} mm).`);
+    }
+  }
+  if (raw.top > 0) {
+    for (const { span, what } of sets) {
+      const maxTop = span - 2 * post;
+      if (raw.top >= maxTop) {
+        problems.push(
+          `Wedge top width (${round(raw.top)} mm) must be smaller than ${round(maxTop)} mm (${what} ${round(span)} mm minus ${round(post)} mm on each side) so wall remains beside the wedges.`,
+        );
+      }
+    }
+  }
+}
+
+/**
+ * One wedge cut through a vertical wall: the wall material occupies
+ * [a0, a0 + t] along `across` (the axis through the wall: 'y' for a wall
+ * parallel to X, 'x' for a wall parallel to Y); the trapezoid is centred on
+ * `c` along the other horizontal axis.
+ */
+export interface WallCut {
+  across: 'x' | 'y';
+  a0: number;
+  t: number;
+  c: number;
+  size: WedgeSize;
+  zTop: number;
+  zBot: number;
+  zCap: number;
+}
+
+/**
+ * Wedge cutter: a trapezoid, `top` wide at zTop and `bottom` wide at zBot,
+ * centred on `c`; above zTop it continues straight up to zCap (through the
+ * lip, +EPS). Extruded through the wall thickness with EPS overshoot on both
+ * faces.
+ *
+ * Built as an XY polygon (x = along the wall, y standing for Z) extruded
+ * along +Z, then rotated so the extrusion runs through the wall:
+ * - across 'y': rotate +90° about X, (u, v, w) → (u, −w, v), extrusion along −Y;
+ * - across 'x': additionally +90° about Z, → (w, u, v), extrusion along +X.
+ */
+export function wedgeCutter(kernel: GeometryKernel, w: WallCut): Solid {
+  const tw = w.size.top / 2;
+  const bw = w.size.bottom / 2;
+  const { c, zTop, zBot, zCap } = w;
+  const poly: [number, number][] =
+    bw > 0
+      ? [
+          [c - bw, zBot],
+          [c + bw, zBot],
+          [c + tw, zTop],
+          [c + tw, zCap],
+          [c - tw, zCap],
+          [c - tw, zTop],
+        ]
+      : [
+          [c, zBot],
+          [c + tw, zTop],
+          [c + tw, zCap],
+          [c - tw, zCap],
+          [c - tw, zTop],
+        ];
+  const len = w.t + 2 * EPS;
+  const prism = kernel.extrude(poly, len);
+  if (w.across === 'y') {
+    // Y ∈ [−len, 0] after the rotation.
+    return kernel.translate(kernel.rotate(prism, [90, 0, 0]), [0, w.a0 - EPS + len, 0]);
+  }
+  // X ∈ [0, len] after the rotation.
+  return kernel.translate(kernel.rotate(prism, [90, 0, 90]), [w.a0 - EPS, 0, 0]);
+}

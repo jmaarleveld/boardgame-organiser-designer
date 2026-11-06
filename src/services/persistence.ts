@@ -64,6 +64,9 @@ function clean(v: number): number {
  *   becomes `columns` (the slots now step along X) and `dividerHeight` is
  *   dropped (the tilted dividers are always full height). See
  *   `migrateTiltedTray`.
+ * - `card-tray-upright` with the earlier wedge params (2026-11-06): `wedges`
+ *   and the `wedgeWalls` select become the two toggles `wedgeEnds` /
+ *   `wedgeLong`. See `migrateUprightTray`.
  *
  * Every other item is returned unchanged.
  */
@@ -115,6 +118,8 @@ export function migrateLegacyItem(item: PlacedItem): PlacedItem {
     }
     case 'card-tray-tilted':
       return migrateTiltedTray(item);
+    case 'card-tray-upright':
+      return migrateUprightTray(item);
     default:
       return item;
   }
@@ -131,6 +136,28 @@ function migrateTiltedTray(item: PlacedItem): PlacedItem {
   const rows = Math.round(numParam(params, 'rows', 1));
   const out = without(params, ['rows', 'dividerHeight']);
   if (rows >= 2) out.columns = rows;
+  return { ...item, params: out };
+}
+
+/**
+ * An upright tray saved with `wedges` (boolean) and `wedgeWalls`
+ * ('ends' | 'long' | 'both'): `wedges: false` turns both toggles off,
+ * otherwise `wedgeWalls` maps to `wedgeEnds` / `wedgeLong` (ends → ends only,
+ * long → long only, both → both; absent → the defaults, ends only). The old
+ * keys are dropped. Returns the item itself when there is nothing to migrate.
+ */
+function migrateUprightTray(item: PlacedItem): PlacedItem {
+  const params = item.params;
+  if (!('wedges' in params) && !('wedgeWalls' in params)) return item;
+  const out = without(params, ['wedges', 'wedgeWalls']);
+  const walls = params.wedgeWalls;
+  if (params.wedges === false || params.wedges === 'false') {
+    out.wedgeEnds = false;
+    out.wedgeLong = false;
+  } else if (walls === 'ends' || walls === 'long' || walls === 'both') {
+    out.wedgeEnds = walls !== 'long';
+    out.wedgeLong = walls !== 'ends';
+  }
   return { ...item, params: out };
 }
 

@@ -165,6 +165,23 @@ describe('persistence', () => {
     const proj = { version: 1, settings: createEmptyProject().settings, items: [tilted({ rows: 2, dividerHeight: 20 })] };
     expect(validateProject(proj).items[0].params).toEqual({ columns: 2 });
   });
+
+  it('migrates the upright wedge params: wedges / wedgeWalls → wedgeEnds / wedgeLong', () => {
+    const upright = (params: PlacedItem['params']): PlacedItem => ({ id: 'u', type: 'card-tray-upright', label: 'u', x: 0, y: 0, rotation: 0, params });
+    const m = (params: PlacedItem['params']) => migrateLegacyItem(upright(params)).params;
+    expect(m({ wedges: false, wedgeWalls: 'both', columns: 2 })).toEqual({ wedgeEnds: false, wedgeLong: false, columns: 2 });
+    expect(m({ wedges: false })).toEqual({ wedgeEnds: false, wedgeLong: false });
+    expect(m({ wedges: true, wedgeWalls: 'ends' })).toEqual({ wedgeEnds: true, wedgeLong: false });
+    expect(m({ wedgeWalls: 'long', wedgeDepth: 25 })).toEqual({ wedgeEnds: false, wedgeLong: true, wedgeDepth: 25 });
+    expect(m({ wedges: true, wedgeWalls: 'both' })).toEqual({ wedgeEnds: true, wedgeLong: true });
+    // wedges on without a select value: the defaults (ends only) apply.
+    expect(m({ wedges: true, columns: 3 })).toEqual({ columns: 3 });
+    const clean = upright({ wedgeEnds: true, wedgeLong: true });
+    expect(migrateLegacyItem(clean)).toBe(clean);
+    // Through validateProject (the load path) too.
+    const proj = { version: 1, settings: createEmptyProject().settings, items: [upright({ wedgeWalls: 'long', exposedHeight: 15 })] };
+    expect(validateProject(proj).items[0].params).toEqual({ wedgeLong: true, wedgeEnds: false, exposedHeight: 15 });
+  });
 });
 
 describe('exporter', () => {

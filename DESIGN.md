@@ -165,8 +165,8 @@ a plate with optional corner stops (engagement = `stopHeight`).
 |----------------|---------------------------------------------|------------|
 | `item-tray`    | Token tray, N×M cells, flat or scoop floor  | innerWidth/Depth/Height (one cell), columns, rows, dividerThickness (dividers always full height), floorShape (`flat`/`scoop`), scoopSides (`long`/`short`), scoopRise |
 | `card-tray-flat` | Card stacks lying flat, finger gaps into a raised floor (never through it), repeats along X | cardParams, columns, dividerThickness, gapWidth, gapFloorDepth, gapReach, gapSides (`sides`/`ends`/`both`) |
-| `card-tray-upright` | Card stacks standing, wedges in the long walls, repeats along X | cardParams, exposedHeight, columns, dividerThickness, dividerHeight, wedges, wedgeTopWidth, wedgeBottomWidth, wedgeDepth (sizes 0 = auto, relative to the cell) |
-| `card-tray-tilted` | Card display / dispenser: stacks leaning back, stepped one behind the other along X with tilted dividers, open front | cardParams, tiltAngle, exposedHeight, frontHeight, overhangClearance, columns, dividerThickness (tilted dividers always full height) |
+| `card-tray-upright` | Card stacks standing, wedges in the end walls and dividers and / or the long walls, repeats along X | cardParams, exposedHeight, columns, dividerThickness, dividerHeight, wedgeEnds, wedgeLong, wedgeTopWidth, wedgeBottomWidth, wedgeDepth (sizes 0 = auto, relative to the cell) |
+| `card-tray-tilted` | Card display / dispenser: stacks leaning back, stepped one behind the other along X with tilted dividers, open front, hollow back, wedges | cardParams, tiltAngle, exposedHeight, frontHeight, overhangClearance, hollowBack, columns, dividerThickness (tilted dividers always full height), wedgePlates, wedgeSides, wedgeTopWidth, wedgeBottomWidth, wedgeDepth |
 | `spacer`       | Solid filler block to take up slack         | width, depth, height |
 | `platform`     | Plate bridging trays to carry the next level | width, depth, thickness, cornerStops, stopSize, stopHeight, stopInset, locateItems |
 
@@ -188,7 +188,10 @@ raised floor does not change the height). Finger notch params are dropped (no
 equivalent); omitted params are filled with the v1 defaults where those
 differ. The same function migrates a `card-tray-tilted` of the earlier
 Y‑repeat version: `rows` ≥ 2 becomes `columns`, `rows` and `dividerHeight`
-are dropped (returned unchanged when neither is present). `examples/stacking-demo.json` and the sample project were migrated
+are dropped (returned unchanged when neither is present); and an upright
+tray with the earlier `wedges` / `wedgeWalls` params: `wedges: false` turns
+both new toggles (`wedgeEnds`, `wedgeLong`) off, otherwise `wedgeWalls`
+ends / long / both maps to them, and the old keys are dropped. `examples/stacking-demo.json` and the sample project were migrated
 with the same function.
 
 ### 4.2 Build context (geometry that depends on other items)
@@ -360,10 +363,11 @@ through the walls that continue `gapFloorDepth` into the floor and `gapReach`
 (default 10 mm) into the cavity under the cards; with gaps the cavity floor is
 raised by `gapFloorDepth` (the spec's floor is `floor + gapFloorDepth`), so the
 groove ends on the structural floor and never breaks through, and the outer
-height grows by `gapFloorDepth`. `card-tray-upright` (X): trapezoid wedges in
-the two outer long walls (cell X = stackHeight + c, Z = cardHeight −
-exposedHeight), toggled by `wedges`; sizes 0 = auto: top 60 % of the cell X
-span, bottom 40 % of the top, depth 60 % of the inner height; `keepOut` for the
+height grows by `gapFloorDepth`. `card-tray-upright` (X): trapezoid wedges
+(cell X = stackHeight + c, Z = cardHeight − exposedHeight) in the end walls
+and every divider (`wedgeEnds`, default on) and / or the two outer long walls
+(`wedgeLong`, default off); sizes 0 = auto: top 60 % of the span of the wall
+cut, bottom 40 % of the top, depth 60 % of the inner height; `keepOut` for the
 standing cards. `card-tray-tilted`
 (X, stepped): cell width = back + H·tan θ + s with s = T/cos θ, H =
 (cardHeight − exposedHeight)·cos θ and back = exposedHeight·sin θ +
@@ -376,7 +380,15 @@ slot) gets the opening above `frontHeight`; its bearing areas wrap the
 framework's (front opening removed, a `low` shelf at `frontHeight`, tilted
 divider tops and the back strip added); `keepOut` height is exposed·cos θ +
 stackHeight·sin θ − lipH, x from `wall + overhangClearance` for slot 0 (inside
-the footprint).
+the footprint). `hollowBack` (default on) replaces the solid back wedge by a
+leaning plate `wall` thick behind slot 0, the outer back wall and a pocket
+between them (floorZ up to a roof `wall` thick under the top), open through
+both side walls; skipped when thinner than 1 mm. Wedges: `wedgePlates`
+(default on) cuts a YZ trapezoid centred on the lane from the top of the back
+plate (through the back block and lip) and of every divider; `wedgeSides`
+(default off) cuts a trapezoid in the slot's tilted frame from both side walls
+at every slot; sizes as in the upright tray, the auto depth clamped to
+H − T·sin θ − 1.
 See `docs-containers.md`.
 
 ## 5. Geometry kernel (`src/geometry/kernel.ts`)

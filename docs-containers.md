@@ -145,11 +145,11 @@ Cell: `stackHeight + c` (X, the stack direction) x `cardWidth + 2c` (Y) x
 `cardHeight - exposedHeight` (Z). `exposedHeight` (default 20) is in the group
 "Cards". Cards stand portrait, faces looking +-X. Repeats along X. **Wedges**
 (group "Wedge"): a trapezoid cut from the top of a wall, through the wall and
-the lip on outer walls (an XZ or YZ polygon extruded and rotated into place).
-`wedges` (boolean, default true) switches them on; `wedgeWalls` ("Wedged
-walls", select, shown when on) picks the grip:
+the lip on outer walls (an XZ or YZ polygon extruded and rotated into place;
+`wedgeCutter` in `common.ts`, shared with the tilted tray). Two toggles, both
+off = no wedges:
 
-* `ends` (default, "End walls and dividers: pinch across the stack"): one
+* `wedgeEnds` (default true, "Wedges in the end walls and dividers"): one
   wedge in every wall perpendicular to the stack, i.e. the outer end walls at
   X = 0 and X = max and every divider, centred on the cell's Y range (the card
   width). Fingers grab the stack by its first and last card. Framework
@@ -158,21 +158,25 @@ walls", select, shown when on) picks the grip:
   divider (`dividerHeight`) the cut starts at the divider top and its depth is
   clamped to leave max(wall, 1) of divider above the floor (skipped if nothing
   remains to cut).
-* `long` ("Long walls: pinch across the card width"): one wedge in each of the
-  two long outer walls (front and back, parallel to X), one pair per cell,
-  centred on the cell's X range. Fingers grab the cards by their edges.
-* `both`: both sets.
+* `wedgeLong` (default false, "Wedges in the long walls"): one wedge in each
+  of the two long outer walls (front and back, parallel to X), one pair per
+  cell, centred on the cell's X range. Fingers grab the cards by their edges.
 
-The three sizes are shown only when wedges are on and default to 0 = auto,
+Both on = both sets. An earlier version (2026-11-06) had `wedges` (boolean)
+and `wedgeWalls` (`ends` / `long` / `both`); on load (`migrateLegacyItem`)
+`wedges: false` turns both toggles off, otherwise `wedgeWalls` maps to the
+toggles, and the old keys are dropped.
+
+The three sizes are shown only when a toggle is on and default to 0 = auto,
 relative to the span of the wall the wedge is cut from: `wedgeTopWidth` 60 %
-of the cell Y span for `ends` (cardWidth + 2c; 39.3 mm by default) and of the
-cell X span for `long` (stackHeight + c; 18.6 mm), `wedgeBottomWidth` 40 % of
+of the cell Y span for the ends (cardWidth + 2c; 39.3 mm by default) and of the
+cell X span for the long walls (stackHeight + c; 18.6 mm), `wedgeBottomWidth` 40 % of
 the resolved top (15.72 / 7.44 mm), `wedgeDepth` 60 % of the inner height
 (40.8 mm). Explicit values override (one value for both sets). Mini-map: one
-notch rect per cut wall, top width x that wall's thickness. Validation (wedges
-on): sizes non-negative, an explicit bottom <= the (smallest) top in use, an
+notch rect per cut wall, top width x that wall's thickness. Validation (a
+toggle on, `validateWedgeSizes` in `common.ts`): sizes non-negative, an explicit bottom <= the (smallest) top in use, an
 explicit top < span − 2·max(wall, 1) for every wall set in use (Y span for
-`ends`, X span for `long`) so a post remains beside the wedges, depth <= inner
+the ends, X span for the long walls) so a post remains beside the wedges, depth <= inner
 height. Dividers between stacks (parallel to Y) are full height unless
 `dividerHeight` (group "Repeat", shown with more than one column) lowers them.
 `keepOut`: one rect per cell cavity, `exposedHeight - lipH` high, for the
@@ -196,8 +200,9 @@ the back, the front deck is drawn from the front (+X). Params in group
   `x_back_i(z) = wall + back + i·pitch + (H - z)·tan θ`, cell width
   (axis-aligned bounding box) `back + H·tan θ + s` (the slot sits `back` into
   its cell), cell depth `cardWidth + 2c` (one lane, no repeat along Y). Outer
-  width `2·wall + back + (n - 1)·pitch + H·tan θ + s`; the back wall is
-  `wall + back` thick at the wall top and thicker below. The pitch is smaller
+  width `2·wall + back + (n - 1)·pitch + H·tan θ + s`; the back is
+  `wall + back` thick at the wall top and thicker below (hollow by default,
+  see below). The pitch is smaller
   than the cell width, the cells overlap in bounding box but not in volume
   (`straightDividers: false`, explicit `pitchX`). Default (15°, back 7.18):
   60.07 x 68.7 mm for 1 column, 126.74 x 68.7 mm for 3 (pitch 33.34).
@@ -211,6 +216,55 @@ the back, the front deck is drawn from the front (+X). Params in group
   stands a divider t thick perpendicular to the cards (t / cos θ
   horizontally), always full height (no `dividerHeight`): every deck leans on
   its own divider and the decks are held apart.
+* **Hollow back** (`hollowBack`, group "Dispenser", default true, cell 0
+  only): the solid back wedge (wall + back thick at the top, 26.4 mm at the
+  floor by default) becomes a leaning plate `wall` thick (perpendicular)
+  behind slot 0, the vertical outer back wall (`wall`, at X = 0) and a pocket
+  between them. Pocket profile in XZ: x from `wall` to the plate's back face
+  `x_back_0(z) - wall / cos θ`, z from `floorZ` (the structural floor stays)
+  to `topZ - wall` (a flat roof `wall` thick under the top face; the back lip
+  sits above it). It runs the whole depth and through both side walls (EPS
+  beyond Y = 0 and Y = D), so each side face shows the pocket profile as a
+  hole; the roof is a short bridge when printing. The pocket is narrowest at
+  the roof, `back + wall·tan θ - wall / cos θ`, and is skipped when that or
+  its height `H - wall` is below 1 mm (small `back`, steep tilt). Default
+  (15°, 1 column, wall 1.6): about 5.9 mm wide at the roof, 23.1 mm at the
+  floor, 64.1 mm high. The recess ring (`wall/2 + clearance` wide) never
+  meets it at the back wall; when `floorZ` is below the recess top the back
+  wall between them is `wall - (wall/2 + clearance)`, validated against
+  `MIN_RECESS_WALL` (at the side walls the pocket hole runs into the recess
+  ring along the pocket's length; the floor under the pocket stays). Bearing
+  areas are unchanged: the roof keeps the `back wall` strip solid.
+* **Wedges** (group "Wedge"), two toggles, sizes as in the upright tray
+  (`wedgeTopWidth`, `wedgeBottomWidth`, `wedgeDepth`, 0 = auto: top 60 % of
+  the span the wedge is cut across, bottom 40 % of the top, depth 60 % of H,
+  clamped to `H - T·sin θ - 1` so it stays above the floor wedge under every
+  slot; only bites at steep tilts with thick stacks), shown when either
+  toggle is on:
+  * `wedgePlates` (default true, "Wedges in the leaning plates"): a vertical
+    trapezoid in the YZ plane centred on the lane (span = lane width
+    cardWidth + 2c), cut from the top of the plate behind every slot: for
+    slot 0 through the outer back wall, the roof, the pocket and the leaning
+    plate and the back lip; for slot i > 0 the tilted divider. Extruded along
+    X from 0 (slot 0) or `x_back_i(H) - pitch` to `x_back_i(zBot) + EPS`,
+    clipped to the slab between slot i - 1's back face and slot i's front face
+    (the neighbouring slots are air), so it never reaches divider i, the side
+    walls (top < lane - 2·max(wall, 1)) or the last cell's front stub. Pinch
+    the deck front and back.
+  * `wedgeSides` (default false, "Wedges in the side walls"): per slot a
+    trapezoid in the slot's tilted frame, top width along v = (cos θ, 0,
+    sin θ) (span = T), depth along -u, u = (-sin θ, 0, cos θ), centred on the
+    slot's top opening (its top edge passes through the slot's mid plane at
+    the wall top), continued along u through the wall top and the lip,
+    extruded along Y through both side walls (+EPS). At the wall top it is
+    `top / cos θ` wide horizontally, centred on `x_back_i(H) + s/2`. Pinch the
+    deck across its width.
+  * Mini-map: per plate wedge a `notch` rect across the lane, top width deep
+    (Y), over the plate's top (x 0 … wall + back for slot 0, the divider rect
+    for i > 0); per side wedge two `notch` rects `top / cos θ` x wall.
+  * Validation (a toggle on): sizes non-negative, explicit bottom <= the
+    smallest top in use, explicit top < span - 2·max(wall, 1) (lane width for
+    the plates, T for the side walls), explicit depth <= `H - T·sin θ - 1`.
 * **Front opening** (last cell only): everything in front of slot n - 1's
   front-face plane above `floorZ + frontHeight` is removed, within the lane's
   Y range only (flush at the side walls), through the front outer wall and
@@ -238,7 +292,8 @@ the back, the front deck is drawn from the front (+X). Params in group
   image is a different part; see DESIGN.md §4.1 and the assembly-view question
   in `docs-box-design-ideas.md`.
 * Validation: tilt range, `exposedHeight < cardHeight`, `0 <= frontHeight < H`,
-  `overhangClearance >= 0`, divider thickness > 0 with more than one column.
+  `overhangClearance >= 0`, divider thickness > 0 with more than one column,
+  the wedge checks above and the recess wall next to the hollow back.
 * An earlier version (2026-11-06) repeated lanes along Y (`rows`) and had a
   `dividerHeight`; on load (`migrateLegacyItem`) `rows` ≥ 2 becomes `columns`
   and both `rows` and `dividerHeight` are dropped.
@@ -293,7 +348,5 @@ cavity box). Every cell gets its own trough. No finger notches.
   tilted tray as stepped slots one behind the other (built 2026-11-06, replacing
   the lanes along Y; its dividers are always full height and the part grows
   at the back so the leaning cards stay inside the footprint).
-* **Wedges in the long walls vs. in the dividers.** Upright wedges are cut only
-  in the two outer long walls; dividers (parallel to Y) have none.
 * **Scoop next to a lowered divider** can stand higher than the divider; there
   is no warning yet.
