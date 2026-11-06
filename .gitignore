@@ -26,3 +26,6 @@ dist-ssr
 # tooling
 .vite/
 coverage/
+
+# Claude Code agent worktrees
+.claude/worktrees/
