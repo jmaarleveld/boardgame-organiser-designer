@@ -68,8 +68,18 @@ export function sampleProject(): Project {
       rotation: 0,
       params: { width: 126.4, depth: 43.2 },
     },
-    // 63.2 × 43.2 × 31.2 on the platform → top 64.4
-    { id: 'sample-top', type: 'item-tray', label: 'Bits', x: 1, y: 170, z: 33.2, rotation: 0, params: { innerWidth: 60, innerDepth: 40, innerHeight: 30 } },
+    // 63.2 × 43.2 × 33.2 (lip) on the platform, recessed base: the platform grows locating ridges under it
+    // (seat depth 2 mm, so the tray still rests at 33.2) → top 66.4
+    {
+      id: 'sample-top',
+      type: 'item-tray',
+      label: 'Bits',
+      x: 1,
+      y: 170,
+      z: 33.2,
+      rotation: 0,
+      params: { innerWidth: 60, innerDepth: 40, innerHeight: 30, stackTop: 'lip', stackBottom: 'recess' },
+    },
   ];
   project.items = items;
   return project;
