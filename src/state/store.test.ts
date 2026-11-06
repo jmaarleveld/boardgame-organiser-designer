@@ -372,7 +372,7 @@ describe('store', () => {
       expect(migrateStackOrder(st().project)).toBe(st().project);
     });
 
-    it('examples/stacking-demo.json keeps its z values (except the deliberately sunk K2)', () => {
+    it('examples/stacking-demo.json keeps its stored z values under gravity', () => {
       clearRegistry();
       registerAllBoxTypes();
       const file = createPersistence({} as Storage).fromJson(readFileSync('examples/stacking-demo.json', 'utf8'));
@@ -380,9 +380,9 @@ describe('store', () => {
       const loaded = new Map(items().map((i) => [i.id, i.z ?? 0]));
       expect(loaded.size).toBe(file.items.length);
       const changed = file.items.filter((i) => loaded.get(i.id) !== (i.z ?? 0)).map((i) => [i.id, i.z, loaded.get(i.id)]);
-      // K2 is stored at z = 15, sunk into K1 to demonstrate the intersection
-      // error. Gravity cannot express that: it now rests on K1's top.
-      expect(changed).toEqual([['k2', 15, 31.2]]);
+      // Every stored z is reproduced by settling in stack order (case K, a tray
+      // "sunk into" another, was removed: gravity cannot express it).
+      expect(changed).toEqual([]);
     });
   });
 

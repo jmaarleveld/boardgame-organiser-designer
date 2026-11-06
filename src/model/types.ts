@@ -3,9 +3,9 @@
  */
 
 export interface BoxDimensions {
-  /** Inner width of the game box (X, left→right in the top view). */
+  /** Inner width of the game box (X, left→right in the editor). */
   width: number;
-  /** Inner depth of the game box (Y, top→bottom in the top view). */
+  /** Inner depth of the game box (Y, front→back: up the screen in the Top view). */
   depth: number;
   /** Inner height of the game box (Z, up). */
   height: number;
@@ -30,7 +30,7 @@ export interface ProjectSettings {
   box: BoxDimensions;
   tolerance: Tolerance;
   defaults: ThicknessDefaults;
-  /** Snapping increment in the top view. 0 disables grid snapping. */
+  /** Snapping increment when dragging / nudging items. 0 disables grid snapping. */
   gridSnap: number;
 }
 

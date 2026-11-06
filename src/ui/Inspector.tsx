@@ -34,7 +34,7 @@ export function Inspector({ previewSlot, exportSlot }: InspectorProps) {
       <section className="panel inspector" aria-label="Inspector">
         <div className="inspector-body">
           <h2>Inspector</h2>
-          <p className="muted">Select a box in the top view, or add one from the palette.</p>
+          <p className="muted">Select a box in the 3D editor or the Stacks list, or add one from the palette.</p>
         </div>
         {previewSlot && <div className="preview-slot">{previewSlot}</div>}
       </section>

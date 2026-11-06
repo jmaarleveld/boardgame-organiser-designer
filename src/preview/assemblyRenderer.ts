@@ -1,5 +1,5 @@
 /**
- * Imperative three.js scene for the 3D editor (and the read‑only assembly view).
+ * Imperative three.js scene for the 3D editor (AssemblyView).
  *
  * The three.js world is the game box frame itself — no root mirroring — so
  * hit points, positions and matrices are all game‑frame values. How the frame
@@ -85,7 +85,7 @@ export interface AssemblySceneApi {
 }
 
 const COLORS: Record<ItemTint, number> = {
-  normal: 0xe4d9c2, // print‑plastic off‑white (matches the top view's item fill family)
+  normal: 0xe4d9c2, // print‑plastic off‑white (the mini‑map uses the same tints)
   problem: 0xf0a040, // overlap / outside usable area / stack fit error
   tall: 0xe5534b, // sticks out of the box (incl. standing cards)
   floating: 0x9cc8f0, // stacked but not fully supported, or may tip

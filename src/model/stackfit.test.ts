@@ -8,7 +8,7 @@ import { platform } from '../boxes/definitions/platform';
 import { spacer } from '../boxes/definitions/spacer';
 import type { ItemParams, PlacedItem, ProjectSettings, Rotation } from './types';
 import { DEFAULT_SETTINGS } from './types';
-import { effectiveTop, itemsTooTall, layoutSummary, restingElevation, stackFit, TIP_MARGIN_FRACTION } from './layout';
+import { effectiveTop, itemsTooTall, layoutSummary, restingElevation, settle, stackFit, TIP_MARGIN_FRACTION } from './layout';
 
 
 // Default tray: 63.2 × 43.2 outer, 31.2 high; +2 with a lip. Wall 1.6.
@@ -274,9 +274,12 @@ describe('stack fit: rotation', () => {
 });
 
 describe('examples/stacking-demo.json', () => {
-  it('every item behaves as its label says: (OK), (warning), (error) or (flagged with X)', () => {
+  it('every item behaves as its label says: (OK), (warning), (error) or (flagged with X), as stored and once settled', () => {
     const project = JSON.parse(readFileSync('examples/stacking-demo.json', 'utf8')) as { settings: ProjectSettings; items: PlacedItem[] };
-    const s = layoutSummary(project.items, project.settings);
+    // The app settles items by gravity on load; the stored z must already be that.
+    const settled = settle(project.items, project.settings);
+    expect(settled.map((i) => i.z ?? 0)).toEqual(project.items.map((i) => i.z ?? 0));
+    const s = layoutSummary(settled, project.settings);
     const verdicts = project.items.map((item) => {
       const mine = s.issues.filter((i) => i.itemIds[0] === item.id);
       const involved = s.issues.filter((i) => i.itemIds.includes(item.id));

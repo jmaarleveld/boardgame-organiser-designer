@@ -28,7 +28,7 @@ function stableStringify(v: unknown): string {
  * Key identifying identical geometry: resolved type/wall/floor/params plus
  * the build context (items above, e.g. what a platform's ridges are based
  * on; ids left out, entries sorted) for types that use one. Shared by the zip
- * export (dedup), the item preview and the assembly view's mesh cache, so
+ * export (dedup), the item preview and the 3D editor's mesh cache, so
  * moving an item on a ridged platform rebuilds that platform. Throws for
  * unknown box types (via resolveItem).
  */

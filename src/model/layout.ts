@@ -1,5 +1,6 @@
 /**
- * Pure 2D layout helpers for the top view (game box frame, mm). See DESIGN.md §2.
+ * Pure layout helpers: footprints, gravity stacking, snapping and validation
+ * (game box frame, mm). See DESIGN.md §2.
  */
 import type { PlacedItem, ProjectSettings, ResolvedItem } from './types';
 import { SUPPORT_TOL, elevationOf, localToBoxRect, placedFootprint, resolveItem } from './resolve';

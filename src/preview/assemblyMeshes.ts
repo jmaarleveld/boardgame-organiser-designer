@@ -1,8 +1,8 @@
 /**
- * Mesh cache for the Assembly view: one MeshData per unique geometry key
+ * Mesh cache for the 3D editor: one MeshData per unique geometry key
  * (exporter's `geometryKey`: resolved type / wall / floor / params and, for
  * context‑dependent types, the build context). Shared by every mounted
- * assembly view (inline + pop‑out). Moving, rotating or relabelling items
+ * AssemblyView. Moving, rotating or relabelling items
  * never changes their own key, so it never triggers a build — except that
  * moving or changing an item resting on a platform with locating ridges
  * changes that platform's key, which rebuilds the platform.
@@ -33,7 +33,7 @@ declare global {
   }
 }
 
-/** Dev‑only counter of kernel mesh builds triggered by the assembly view. */
+/** Dev‑only counter of kernel mesh builds triggered by the 3D editor. */
 function countBuild(): void {
   if (!import.meta.env.DEV || typeof window === 'undefined') return;
   const dbg = (window.__bgid ??= {});

@@ -2,10 +2,11 @@
 
 A browser app for designing 3D-printable organizer inserts for board game boxes.
 Enter the inside dimensions of your game box, drag parametric trays and spacers
-into a top-down view, and export one binary STL per unique part, ready for your slicer.
+around a 3D view of the box, stack them, and export one binary STL per unique part,
+ready for your slicer.
 Everything runs client-side; there is no backend.
 
-<!-- Screenshot: add an image of the top view and inspector here, e.g.
+<!-- Screenshot: add an image of the 3D editor and inspector here, e.g.
      ![Board Game Insert Designer](docs/screenshot.png) -->
 
 ## Quick start
@@ -34,18 +35,25 @@ Other scripts: `npm run lint` (oxlint), `npm run typecheck`, `npm run preview`
    tolerance of 2 mm leaves 1 mm of play on each side. Defaults are 2 mm in X and Y.
 3. **Set the defaults.** Project-wide wall thickness (default 1.6 mm) and floor
    thickness (default 1.2 mm) apply to every item unless overridden. Grid snap
-   (default 1 mm; 0 turns it off) sets the snapping increment in the top view.
-4. **Add boxes.** Click a box type in the palette or drag it into the top view.
-   Each item has a label and the parameters of its type.
-5. **Arrange.** Drag items to move them. They snap to the grid, to the usable-area
-   edges and to neighbouring item edges (guides show while snapping). Rotate with
-   `R` to swap width and depth.
+   (default 1 mm; 0 turns it off) sets the snapping increment for dragging and
+   nudging.
+4. **Add boxes.** Click a box type in the palette or drag it into the 3D editor
+   (it lands on the floor or on top of the item under the pointer). Each item has
+   a label and the parameters of its type.
+5. **Arrange.** The centre of the window is a 3D editor of the game box. Drag
+   items with the left mouse button to move them; they snap to the grid, to the
+   usable-area edges and to neighbouring item edges (guides and live distance
+   labels show while dragging), and they rest on whatever is under them (see
+   *Stacking*). Rotate with `R` to swap width and depth. The *Top* camera looks
+   straight down, with x to the right and y **up** the screen: the origin is the
+   front-left corner of the box, and the `y = 0` edge is the one nearest you in
+   the *Front* and *Iso* views.
 6. **Override per item.** In the inspector, tick "override project default" to give
    one item its own wall or floor thickness. Clear the tick to go back to the
    project default.
 7. **Check validation.** Overlapping items, items outside the usable area, items
    taller than the box, and invalid parameters (for example a notch wider than the
-   wall it is cut from) are highlighted in the top view and listed in the
+   wall it is cut from) are tinted in the 3D editor and the mini-map and listed in the
    validation panel. The status bar shows the remaining slack in X and Y.
 8. **Export.** "Export all STL" builds every item and downloads a zip containing one
    binary STL per unique geometry plus a `manifest.txt`. Items that are identical
@@ -69,14 +77,18 @@ Mouse:
 
 | Action | Control |
 |---|---|
-| Select an item | Click it (click the background to deselect) |
-| Move an item | Drag it |
+| Select an item | Click it in the 3D editor or in the *Stacks* list (click the background to deselect) |
+| Move an item (with its stack) | Left-drag it |
 | Disable snapping while dragging | Hold `Shift` |
 | Drag an item out from under its stack | Hold `Alt` when you start dragging |
+| Orbit | Right-drag (pans in the *Top* view) |
+| Pan | Middle-button drag |
 | Zoom | Mouse wheel, centred on the pointer |
-| Zoom in / out / fit | `+` / `−` / `Fit` buttons at the corner of the top view |
-| Pan | Middle-button drag, or hold `Space` and drag |
-| Add a box | Click a type in the palette, or drag it into the view |
+| Camera views | `Top` / `Front` / `Side` / `Iso` buttons; `Fit` (or clicking the active view again) re-frames the box |
+| See and click items inside a stack | `Fade above` (on by default) and `Exploded` buttons |
+| Jump the camera to a spot | Click it in the mini-map (bottom-right; also selects the item there) |
+| Change the stack order | Drag a row in the *Stacks* list onto another row, or `Alt+↑` / `Alt+↓` on a row |
+| Add a box | Click a type in the palette, or drag it into the 3D editor |
 
 Keyboard (when focus is not in a text field):
 
@@ -88,10 +100,9 @@ Keyboard (when focus is not in a text field):
 | `Ctrl+Shift+D` / `Cmd+Shift+D` | Duplicate the selected item on top of itself (see Stacking) |
 | `Ctrl+Z` / `Cmd+Z` | Undo |
 | `Ctrl+Y` or `Ctrl+Shift+Z` | Redo |
-| Arrow keys | Nudge the selected item by one grid step |
+| Arrow keys | Nudge the selected item by one grid step, following the screen (`↑` = +y) |
 | `Shift` + arrow keys | Nudge by ten grid steps |
 | `Esc` | Deselect |
-| `Tab` | Move focus through the items in the top view |
 
 ## Standard boxes
 
@@ -179,30 +190,42 @@ Items can sit on top of other items, not only on the game box floor.
 
 * **Gravity.** Every item has a `z` (the height of its bottom above the game
   box floor), but you never type it: each item rests on the highest item below
-  it that it overlaps in the top view, or on the floor. The order of the items
+  it that it overlaps seen from above, or on the floor. The order of the items
   is the stack order — an item dragged onto another lands on top of it. The
   inspector shows "Rests at z = …" next to the computed top (`z` + outer
-  height). The layout checks work in 3D: two items that overlap in the top view
+  height). The layout checks work in 3D: two items that overlap seen from above
   only collide when their heights overlap too, and "too tall" uses the top of
   the item.
 * **Moving stacks.** Dragging an item moves everything stacked on it along (an
-  item bridging two trays only comes along when both move). Alt+drag pulls the
-  item out from under its stack; what was on it drops down. Shift+drag moves
-  without snapping.
+  item bridging two trays only comes along when both move); the moved stack goes
+  to the end of the stack order, so it lands on top of whatever it is dropped on.
+  Alt+drag pulls only the item out from under its stack: the item and everything
+  that rested on it go to the end of the stack order, but only the item moves, so
+  what is on it stays on it while they still overlap and drops to whatever is
+  under it once the item slides out, and the pulled item climbs onto anything it
+  is pushed over. Shift+drag moves without snapping.
+* **Stack order.** The *Stacks* list in the left column shows each floor item
+  with what rests on it (an item on several items is listed under the first and
+  marked "also on"). Drag a row onto another row to put it directly underneath
+  that item, or use `Alt+↑` / `Alt+↓`. This is the only way to slide an item
+  under an existing stack: dropping from the palette always lands on top.
 * **Duplicate on top** (`Ctrl+Shift+D`) puts a copy at the same position on top
   of the selected item and names it "… (level 2)", "… (level 3)", and so on.
 * **Support check.** An item with `z > 0` must be fully carried: its footprint
   must be covered by items whose tops are exactly at its base (within 0.01 mm).
-  Otherwise it is listed as *Floating* (a warning, light blue in the assembly
-  view). An item whose base lies inside another item's body is an error.
+  Otherwise it is listed as *Floating* (a warning, light blue in the 3D
+  editor). An item whose base lies inside another item's body is an error.
 * **Stack fit check.** The support check looks at footprints; the fit check
   looks at what the item really stands on (see *Stack fit* below): open trays
   only carry on their walls, a lip must drop into a recess, a plug needs an
   empty cavity, and standing cards need free space above them.
-* **Level filter.** When the layout has more than one level, a *Show up to*
-  menu appears next to the zoom buttons of the top view. Pick a level to hide the
-  items stacked above it so you can edit the lower ones. Elevated items have a
-  dashed outline and an `↑ z` badge.
+* **Reaching hidden items.** With *Fade above* on (the default), selecting an
+  item turns everything stacked over it see-through (it keeps its colour) and
+  click-through, so you can click and drag the selected item and what is under
+  it; items of other stacks stay solid. Select a low item from the *Stacks*
+  list, or click its visible side. *Exploded* lifts each stack level 15 mm
+  apart for display only; you can still select and drag items, and the real
+  positions are unchanged.
 
 Stacking features of the boxes: tray, divided tray and card tray all have a
 *Stacking* parameter group. These features are made for **trays with the same
@@ -252,13 +275,13 @@ the platform's top is the top of its ridges, and its engagement for anything on
 it is the ridge height (`lipHeight` when all ridged items use the same lip), so
 gravity puts the items on the plate and the support check accepts
 them. With the option off, ridges are left out and items rest on the flat plate.
-An item counts as resting on the platform when it overlaps it in the top view
+An item counts as resting on the platform when it overlaps it seen from above
 and its `z` is the plate top (within 0.01 mm).
 
 The platform's geometry is based on the items on it: moving, resizing or
 changing those items changes the platform and means **reprinting it**. The
 inspector lists the items a selected platform's ridges are based on, and the
-item preview, the assembly view and the export rebuild the platform as soon as
+item preview, the 3D editor and the export rebuild the platform as soon as
 they change (the OpenSCAD file lists them as "Based on: …").
 
 ### Stack fit
@@ -306,7 +329,8 @@ Fit messages name both items and say what to change. A fit error highlights
 the stacked item (and, for a collision, the item it collides with) like any
 other error.
 
-`examples/stacking-demo.json` (open it with *Open*) shows every case, A to S;
+`examples/stacking-demo.json` (open it with *Open*) shows every case, A to S
+(there is no case K: a tray sunk into another cannot happen with gravity);
 each label ends with what the app reports: `(OK)`, `(warning)`, `(error)`, or
 `(flagged with X)` for a base that is part of X's error.
 
@@ -316,7 +340,7 @@ top, and a platform on two trays that carries a third tray.
 ## Adding a box type
 
 Every box type is a `BoxTypeDefinition` (see `src/boxes/types.ts`). The UI builds
-its parameter form from `params`, draws the top view from `draw()` and places items
+its parameter form from `params`, draws the mini-map footprint from `draw()` and places items
 using `footprint()`, so a new type needs no UI changes.
 
 1. Create `src/boxes/definitions/<name>.ts` and export a `BoxTypeDefinition`
@@ -393,7 +417,7 @@ export const coinTray: BoxTypeDefinition = {
 ## Architecture
 
 The app is a Vite + React 19 + TypeScript project with a single zustand store and a
-plain SVG top view. Geometry is computed with `manifold-3d` (WASM). See
+three.js 3D editor (plus a small SVG mini-map). Geometry is computed with `manifold-3d` (WASM). See
 [`DESIGN.md`](DESIGN.md) for the data model, coordinate frames, conventions and
 module ownership.
 
@@ -410,8 +434,10 @@ src/
                      binary STL writer
   services/          BoardGameGeek client, persistence (autosave, JSON),
                      STL/zip exporter, file download
-  preview/           three.js 3D preview of a selected item
-  ui/                palette, settings, top view, inspector, validation, status bar
+  preview/           three.js 3D editor (AssemblyView, scene, camera) and the
+                     3D preview of a selected item
+  ui/                palette, settings, stacks outline, mini-map, inspector,
+                     validation, status bar
 ```
 
 The BGG lookup calls `/api/bgg`, which the Vite dev server proxies to

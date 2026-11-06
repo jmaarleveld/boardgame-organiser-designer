@@ -7,7 +7,6 @@ import { nudgeDelta } from './model/drag';
 import { Palette } from './ui/Palette';
 import { OutlinePanel } from './ui/OutlinePanel';
 import { SettingsPanel } from './ui/SettingsPanel';
-import { TopView } from './ui/TopView';
 import { Inspector } from './ui/Inspector';
 import { ValidationPanel } from './ui/ValidationPanel';
 import { StatusBar } from './ui/StatusBar';
@@ -79,14 +78,6 @@ export default function App({ services, onRetryKernel }: AppProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const loadedRef = useRef(false);
   const { AssemblyView } = services;
-  /** Temporary: show the old 2D top view instead of the 3D editor (Phase 4 turns it into a mini‑map). */
-  const [show2d, setShow2d] = useState(false);
-  const use3d = !!AssemblyView && !show2d;
-  /** Arrow keys follow the screen: y grows up the screen in the 3D editor, down in the 2D view. */
-  const screenYUpRef = useRef(use3d);
-  useEffect(() => {
-    screenYUpRef.current = use3d;
-  }, [use3d]);
 
   /* ---- autosave / restore ---- */
   useEffect(() => {
@@ -155,7 +146,7 @@ export default function App({ services, onRetryKernel }: AppProps) {
         s.select(null);
       } else if (e.key.startsWith('Arrow')) {
         const step = (s.project.settings.gridSnap > 0 ? s.project.settings.gridSnap : 1) * (e.shiftKey ? 10 : 1);
-        const d = nudgeDelta(e.key, step, screenYUpRef.current);
+        const d = nudgeDelta(e.key, step);
         if (!d) return;
         e.preventDefault();
         s.moveItem(sel.id, sel.x + d.dx, sel.y + d.dy);
@@ -308,17 +299,10 @@ export default function App({ services, onRetryKernel }: AppProps) {
         </aside>
 
         <main className="centre">
-          {use3d ? <AssemblyView editable /> : <TopView summary={summary} />}
-          {AssemblyView && (
-            <button
-              type="button"
-              className="view-toggle"
-              aria-pressed={show2d}
-              title={show2d ? 'Back to the 3D editor' : 'Show the old 2D top view (temporary)'}
-              onClick={() => setShow2d((v) => !v)}
-            >
-              {show2d ? '3D' : '2D'}
-            </button>
+          {AssemblyView ? (
+            <AssemblyView editable />
+          ) : (
+            <div className="centre-msg muted">The 3D editor is not available.</div>
           )}
         </main>
 

@@ -8,6 +8,7 @@ import { chooseDragPlane, dragDelta, dragPlanePoint, dragStep, gapLabels, startD
 import { explodeOffsets, fadedItemIds } from '../model/stackView';
 import { findBoxType } from '../boxes/registry';
 import { BOX_TYPE_MIME } from '../ui/dnd';
+import { MiniMap } from '../ui/MiniMap';
 import type { AssemblyViewProps } from '../services/contracts';
 import { useServices } from '../integration';
 import { useStore } from '../state/store';
@@ -135,7 +136,7 @@ interface EditorDrag {
  * item (Alt at drag start leaves its stack behind, Shift disables snapping),
  * a click selects, a click on empty space deselects, palette drops add items.
  */
-export default function AssemblyView({ className, onPopOut, onClose, editable = false }: AssemblyViewProps) {
+export default function AssemblyView({ className, editable = false }: AssemblyViewProps) {
   const { exporter } = useServices();
   const project = useStore((s) => s.project);
   const selectedId = useStore((s) => s.selectedId);
@@ -393,16 +394,6 @@ export default function AssemblyView({ className, onPopOut, onClose, editable = 
             </button>
           </>
         )}
-        {onPopOut && (
-          <button type="button" onClick={onPopOut} title="Open the assembly in a larger view">
-            Pop out
-          </button>
-        )}
-        {onClose && (
-          <button type="button" onClick={onClose} title="Close (Esc)" aria-label="Close assembly view">
-            ×
-          </button>
-        )}
       </div>
       {status && (
         <div className="preview3d-loading assembly-status" role="status">
@@ -411,6 +402,7 @@ export default function AssemblyView({ className, onPopOut, onClose, editable = 
       )}
       {failed > 0 && <div className="assembly-failed error-text">{failed} item{failed > 1 ? 's' : ''} could not be generated</div>}
       {!items.length && <div className="preview3d-msg">The game box is empty. Add boxes from the palette.</div>}
+      {editable && <MiniMap summary={summary} tints={tints} onFocus={(x, y) => api?.focusOn(x, y)} />}
       {editable && (
         <div className="editor-hint">
           Drag: move · Alt+drag: leave the stack behind · Shift: no snap · Arrows: nudge · Right‑drag: orbit · Middle: pan · Wheel: zoom

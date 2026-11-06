@@ -1,5 +1,5 @@
 /**
- * Pure drag maths shared by the 2D top view and the 3D editor: where a dragged
+ * Pure drag maths for the 3D editor: where a dragged
  * item goes for a pointer position (grab offset, snapping, clamping), the
  * live distance labels, and the arrow‑key nudge direction.
  */
@@ -215,12 +215,11 @@ export function gapLabels(r: ItemRect, others: readonly ItemRect[], usable: Rect
 /* ------------------------------------------------------------------- nudge */
 
 /**
- * Game‑frame delta for an arrow key. `screenYUp`: the view shows y growing up
- * the screen (the 3D editor), so ArrowUp increases y; otherwise (2D top view,
- * y down) ArrowUp decreases it. Null for other keys.
+ * Game‑frame delta for an arrow key. The editor shows y growing up the screen
+ * (y‑up frame), so ArrowUp increases y. Null for other keys.
  */
-export function nudgeDelta(key: string, step: number, screenYUp: boolean): { dx: number; dy: number } | null {
-  const up = screenYUp ? step : -step;
+export function nudgeDelta(key: string, step: number): { dx: number; dy: number } | null {
+  const up = step;
   switch (key) {
     case 'ArrowLeft':
       return { dx: -step, dy: 0 };

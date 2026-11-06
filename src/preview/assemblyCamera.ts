@@ -1,16 +1,17 @@
 /**
- * Pure (three.js‑free) camera math for the Assembly view.
+ * Pure (three.js‑free) camera math for the 3D editor.
  *
  * The three.js world IS the game box frame (DESIGN.md §2): no mirroring at the
  * scene root, so chiral geometry renders as it prints.
  *
- * Handedness note: the game box frame as the 2D top view draws it (x right,
- * y down the screen, z up out of the screen) is a *left*‑handed picture, while
- * the geometry kernel / STL frame is right‑handed. A proper camera (no
+ * Handedness note: drawing the game box frame with x right, y down the
+ * screen and z up out of the screen (the old 2D top view) is a *left*‑handed
+ * picture, while the geometry kernel / STL frame is right‑handed. A proper camera (no
  * mirroring) looking straight down can therefore show either
  *   - 'y-up':   x right, y UP the screen (origin at the bottom‑left), or
  *   - 'y-down': y down the screen, but x pointing LEFT (origin at the top‑right),
- * never "x right AND y down". `ViewOrientation` picks one; every preset
+ * never "x right AND y down". The app uses 'y-up' (chosen 2026‑11‑06; the
+ * mini‑map draws y up too). `ViewOrientation` picks one; every preset
  * (front / side / iso) is defined relative to that choice so they stay
  * consistent with the Top preset ("front" = the edge at the bottom of the Top
  * view, "side" = the edge on the right of the Top view).

@@ -397,25 +397,6 @@
       "rotation": 0
     },
     {
-      "id": "k1",
-      "type": "tray",
-      "label": "K1 tray, base (flagged with K2)",
-      "x": 232.6,
-      "y": 236.2,
-      "params": {},
-      "rotation": 0
-    },
-    {
-      "id": "k2",
-      "type": "tray",
-      "label": "K2 sunk into K1 (error)",
-      "x": 232.6,
-      "y": 236.2,
-      "z": 15,
-      "params": {},
-      "rotation": 0
-    },
-    {
       "id": "l1",
       "type": "tray",
       "label": "L1 lip tray, level 1 (OK)",

@@ -1,8 +1,9 @@
 /**
- * Pure (three.js‑free) helpers for the Assembly view: item placement matrices,
+ * Pure (three.js‑free) helpers for the 3D editor: item placement matrices,
  * colour classification and an LRU cache for per‑geometry meshes.
- * Frames: see DESIGN.md §2. World = game box frame (x right, y "down" in the
- * top view, z up); an item's mesh lives in its local frame [0,w]×[0,d]×[0,h].
+ * Frames: see DESIGN.md §2. World = game box frame (x right, y away from the
+ * viewer / up the screen in the Top view, z up); an item's mesh lives in its
+ * local frame [0,w]×[0,d]×[0,h].
  */
 import type { PlacedItem, ProjectSettings } from '../model/types';
 import type { LayoutSummary } from '../model/layout';

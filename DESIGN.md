@@ -11,7 +11,7 @@ produces one STL per box, ready for slicing.
 |----------------------|------------------------------------------------|
 | Build / dev server   | Vite 8, TypeScript (strict), React 19          |
 | State                | zustand (single store, `src/state/store.ts`)   |
-| Top view             | plain SVG, pointer events (no canvas lib)      |
+| Editor               | `three` 3D editor (centre pane); plain SVG mini‑map |
 | Solid geometry (CSG) | `manifold-3d` (WASM, exact booleans, manifold output) |
 | 3D preview           | `three` (BufferGeometry from kernel mesh)      |
 | Multi‑file download  | `jszip`                                        |
@@ -30,8 +30,8 @@ BGG's XML API does not send CORS headers.
   editor shows x to the right and y *up* the screen in the Top preset, i.e.
   the origin is the front‑left corner and the `y = 0` edge is the one nearest
   the viewer in the Front / Iso presets. Nothing is mirrored (a proper camera
-  cannot show x right *and* y down). The old 2D top view (SVG, temporary, see
-  §6) still draws y downward until it becomes the mini‑map (Phase 4).
+  cannot show x right *and* y down). The mini‑map (§6) draws the same y‑up
+  picture (its SVG is flipped: svg y = depth − y).
 * **Stack order and gravity**: an item's elevation is not entered; it is
   derived. The order of `Project.items` is the stack order: each item rests on
   the highest effective surface (`top − engagement`, §4) of the *earlier*
@@ -58,7 +58,7 @@ Project
  │   ├ box: { width, depth, height }        inner dimensions of the game box
  │   ├ tolerance: { x, y }                  total slack left per axis
  │   ├ defaults: { wall, floor }            project‑wide wall / floor thickness
- │   └ gridSnap                             snapping increment in the top view (0 = off)
+ │   └ gridSnap                             snapping increment for drag / nudge (0 = off)
  └ items: PlacedItem[]
      ├ id, type (box type id), label
      ├ x, y, rotation (0 | 90)
@@ -100,7 +100,7 @@ context‑dependent heights count; the layout functions always pass them. `items
 
 Every standard box is a `BoxTypeDefinition` registered in `src/boxes/registry.ts`.
 The UI is fully generic: it renders the parameter form from `params: ParamSpec[]`,
-draws the top view from `draw()`, and places items using `footprint()`. Adding a
+draws the mini‑map footprints from `draw()`, and places items using `footprint()`. Adding a
 new box type means adding one file under `src/boxes/definitions/` and registering it
 in `src/boxes/index.ts`; nothing else changes.
 
@@ -198,8 +198,8 @@ the items resting on it, so the contract has an opt‑in build context:
   and a note.
 * Every consumer that builds, draws, sizes or keys geometry passes the
   project's items: the layout (`stackRects`, `itemsTooTall`, validation), the
-  store (`settle`), the top view, the inspector, the exporter
-  (`buildSolid`, OpenSCAD, manifest) and the assembly view (`localSize`,
+  store (`settle`), the mini‑map, the inspector, the exporter
+  (`buildSolid`, OpenSCAD, manifest) and the 3D editor (`localSize`,
   `classifyItems`). `geometryKey` includes the context (ids dropped, entries
   sorted), so the export dedupe, the item preview key (`PreviewPane`) and the
   assembly mesh cache rebuild a platform when an item on it moves or changes,
@@ -268,14 +268,16 @@ engagement(item on o) = z` within `SUPPORT_TOL`):
 3. **Keep‑out.** Any other item that overlaps a keep‑out rect in XY and whose
    Z range intersects `(top, top + height)` → error `kind: 'stack-fit'`
    (intruder, keeper). `effectiveTop` = max(top, keep‑out tops) is used by
-   "too tall" and by the assembly view's `tall` tint.
+   "too tall" and by the 3D editor's `tall` tint.
 
 `floatingItemIds` returns the stacked item of every `floating` or `unstable`
-issue (light blue in the assembly view); stack‑fit errors are ordinary errors
-(red outline in the top view, orange in the assembly view).
-`examples/stacking-demo.json` exercises every case (A–S); a test checks that
-each item's label suffix — `(OK)`, `(warning)`, `(error)`, `(flagged with X)` —
-matches the summary.
+issue (light blue in the 3D editor); stack‑fit errors are ordinary errors
+(orange in the 3D editor and the mini‑map, red outline in the mini‑map).
+`examples/stacking-demo.json` exercises the cases A–J and L–S (case K, a tray
+sunk into another, was dropped: gravity cannot produce it). Tests check that
+its stored `z` values are exactly what `settle` gives and that each item's
+label suffix — `(OK)`, `(warning)`, `(error)`, `(flagged with X)` — matches the
+summary of the settled layout.
 
 ## 5. Geometry kernel (`src/geometry/kernel.ts`)
 
@@ -290,9 +292,9 @@ and is awaited at app start. The kernel is the only module that imports
 
 Three‑pane layout:
 
-1. **Left — palette & settings**: game box size (manual entry or BGG lookup),
-   tolerance x/y, default wall/floor, grid snap; list of box types to add
-   (click or drag into the view).
+1. **Left — palette, settings & stacks**: game box size (manual entry or BGG
+   lookup), tolerance x/y, default wall/floor, grid snap; list of box types to
+   add (click or drag into the 3D editor); the Stacks outline (below).
 2. **Centre — 3D editor** (`AssemblyView` with `editable`, three.js; y‑up,
    see §2). Camera buttons Top (orthographic, straight down) / Front / Side /
    Iso and Fit; right‑drag orbits (pans in Top), middle‑drag pans, the wheel
@@ -306,7 +308,7 @@ Three‑pane layout:
      items that stay put (Shift: no snap; `snapPosition`), and the item settles
      live, so it visibly climbs onto trays. Alt at drag start pulls the item
      out from under its stack (`carry: false`, §4). One drag = one undo step
-     (`beginDrag` / `endDrag`). The 2D top view uses the same drag maths.
+     (`beginDrag` / `endDrag`).
    * **While dragging**, overlay labels show the distance from the item's
      footprint to the nearest facing neighbour edge (items overlapping it in
      height) or usable‑area wall on each side (`gapLabels`), plus the snap
@@ -315,20 +317,44 @@ Three‑pane layout:
      centre at the item top or floor point under the pointer and appended to
      the stack order, so it settles on top.
    * **Keys** (when focus is not in a text field): arrows nudge by the grid
-     step (Shift: 10×) following the screen — ArrowUp increases y in the 3D
-     editor (decreases it in the 2D view); `R` rotate, `Delete` remove,
+     step (Shift: 10×) following the screen — ArrowUp increases y (y‑up);
+     `R` rotate, `Delete` remove,
      `Ctrl+D` duplicate, `Ctrl+Shift+D` duplicate on top (stacked),
      `Ctrl+Z/Y` undo/redo, `Esc` deselect.
    Overlapping items, items outside the usable area and items taller than the
-   box are tinted (§7) and listed in a validation panel. A temporary **2D**
-   button switches the centre pane to the old SVG top view (y down; same drag
-   rules; Space/middle‑drag pans, wheel zooms); Phase 4 turns it into a
-   mini‑map.
+   box are tinted (§7) and listed in a validation panel.
+   * **Reaching hidden items** (toolbar toggles next to the camera buttons):
+     *Fade above* (default on) — while an item is selected, every item whose
+     footprint overlaps it and whose bottom is higher than its bottom (the
+     column stacked on it, incl. a lid sunk into its lip) is drawn
+     translucent (same tint, material cache key `tint|selected|placeholder|faded`)
+     and is skipped by picking, so a click or drag reaches the selected item
+     and what is beneath it. Items of other stacks stay solid and clickable
+     (fading everything above a height would hide the context and block
+     switching to a neighbouring stack). `fadedItemIds` in
+     `src/model/stackView.ts`. *Exploded* — display only: each item is lifted
+     by its stack level × 15 mm (`explodeOffsets`; level 0 on the floor, else
+     1 + the highest level among its supporters, so a bridge clears both
+     stacks). The offset is baked into the placement matrix, so picking, the
+     drag plane, the distance labels and the selection outline all use the
+     displayed position, while drags change only x/y in the model; the camera
+     fit includes the exploded height (`setFitHeight`). Instant, no
+     animation.
+   * **Mini‑map** (`src/ui/MiniMap.tsx`, bottom‑right overlay, ~220 px wide,
+     collapsible): read‑only top‑down SVG of the game box, usable area and
+     item footprints (box‑type `draw()` features, the 3D tints, error/warning
+     outlines, selection), drawn y‑up like the editor. A click centres the 3D
+     camera on that point (`focusOn(x, y)`) and selects the topmost item
+     under it, if any. No editing, no z badges, no level filter.
+   * **Stacks outline** (left column, `src/ui/OutlinePanel.tsx`): the stack
+     tree (`buildStackTree`); click selects, dragging a row onto another (or
+     Alt+↑/↓) moves it in the stack order (`reorderItem`) — the only way to
+     put an item *under* another.
 3. **Right — inspector**: label, position, rotation, read‑only elevation
    ("Rests at z = …"), wall/floor override
    (checkbox "override project default" + value), generated parameter form,
    computed outer footprint, 3D preview of the selected item, export buttons.
-   (The whole assembly is the centre pane; there is no Assembly tab.)
+   (The whole assembly is the centre pane; there is no separate assembly view.)
 
 Status bar: remaining slack in x / y given the current layout (bounding box of
 items vs usable area), total item count, validation summary.
@@ -358,8 +384,10 @@ items vs usable area), total item count, validation summary.
   floating or "may tip" stacked items light blue. The three.js world is the
   game box frame itself (nothing mirrored, chiral geometry renders as it
   prints); the camera presets are y‑up (§2, `assemblyCamera.ts`). The scene
-  API (`assemblyRenderer.ts`) offers picking (`pickItemAt`), pointer rays and
-  plane projection for dragging, and `projectToCanvas` for HTML overlays.
+  API (`assemblyRenderer.ts`) offers picking (`pickItemAt`, skipping faded
+  items), pointer rays and plane projection for dragging, `projectToCanvas`
+  for HTML overlays, `focusOn(x, y)` (used by the mini‑map) and
+  `setFitHeight` (exploded view).
 * `src/geometry/scadKernel.ts` — a second `GeometryKernel` that records calls
   and emits OpenSCAD source; the exporter writes a `.scad` next to every `.stl`.
 

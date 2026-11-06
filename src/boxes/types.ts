@@ -47,8 +47,9 @@ export interface Footprint {
 }
 
 /**
- * 2D decoration drawn in the top view, in the item's local unrotated frame
- * (origin = outer top‑left corner, x right, y down, mm).
+ * 2D decoration drawn in the mini‑map, in the item's local unrotated frame
+ * (origin = the outer corner at the smallest x and y, x along the width, y
+ * along the depth, mm).
  */
 export type TopViewFeature =
   | { kind: 'rect'; x: number; y: number; w: number; h: number; role: 'cavity' | 'divider' | 'notch' | 'solid' }

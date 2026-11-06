@@ -140,14 +140,12 @@ describe('gapLabels', () => {
 
 describe('nudgeDelta', () => {
   it('follows the screen: ArrowUp increases y in the y-up 3D editor', () => {
-    expect(nudgeDelta('ArrowUp', 1, true)).toEqual({ dx: 0, dy: 1 });
-    expect(nudgeDelta('ArrowDown', 10, true)).toEqual({ dx: 0, dy: -10 });
-    expect(nudgeDelta('ArrowLeft', 1, true)).toEqual({ dx: -1, dy: 0 });
-    expect(nudgeDelta('ArrowRight', 1, false)).toEqual({ dx: 1, dy: 0 });
+    expect(nudgeDelta('ArrowUp', 1)).toEqual({ dx: 0, dy: 1 });
+    expect(nudgeDelta('ArrowDown', 10)).toEqual({ dx: 0, dy: -10 });
+    expect(nudgeDelta('ArrowLeft', 1)).toEqual({ dx: -1, dy: 0 });
+    expect(nudgeDelta('ArrowRight', 1)).toEqual({ dx: 1, dy: 0 });
   });
-  it('ArrowUp decreases y in the y-down 2D view', () => {
-    expect(nudgeDelta('ArrowUp', 1, false)).toEqual({ dx: 0, dy: -1 });
-    expect(nudgeDelta('ArrowDown', 1, false)).toEqual({ dx: 0, dy: 1 });
-    expect(nudgeDelta('a', 1, true)).toBeNull();
+  it('ignores other keys', () => {
+    expect(nudgeDelta('a', 1)).toBeNull();
   });
 });
