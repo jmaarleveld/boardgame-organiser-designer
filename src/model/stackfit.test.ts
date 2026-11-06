@@ -235,7 +235,7 @@ describe('stack fit: upright card trays keep the space above free', () => {
     expect(itemsTooTall([cards], { ...settings, box: { ...settings.box, height: 90 } })).toEqual([]);
     // Flat card trays have no keep-out.
     const flat = it_('flat', 'card-tray-flat', 1, 1);
-    expect(effectiveTop(flat, low, [flat])).toBeCloseTo(31.2, 9);
+    expect(effectiveTop(flat, low, [flat])).toBeCloseTo(33.2, 9); // 1.2 floor + 2 groove + 30 stack
   });
 });
 

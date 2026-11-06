@@ -164,8 +164,8 @@ a plate with optional corner stops (engagement = `stopHeight`).
 | id             | Purpose                                     | Key params |
 |----------------|---------------------------------------------|------------|
 | `item-tray`    | Token tray, N×M cells, flat or scoop floor  | innerWidth/Depth/Height (one cell), columns, rows, dividerThickness, dividerHeight, floorShape (`flat`/`scoop`), scoopSides (`long`/`short`), scoopRadius |
-| `card-tray-flat` | Card stacks lying flat, finger gaps to the floor, repeats along X | cardParams, columns, dividerThickness, gapWidth, gapFloorDepth, gapReach, gapSides (`sides`/`ends`/`both`) |
-| `card-tray-upright` | Card stacks standing, wedges in the long walls, repeats along X | cardParams, exposedHeight, columns, dividerThickness, dividerHeight, wedgeTopWidth, wedgeBottomWidth, wedgeDepth |
+| `card-tray-flat` | Card stacks lying flat, finger gaps into a raised floor (never through it), repeats along X | cardParams, columns, dividerThickness, gapWidth, gapFloorDepth, gapReach, gapSides (`sides`/`ends`/`both`) |
+| `card-tray-upright` | Card stacks standing, wedges in the long walls, repeats along X | cardParams, exposedHeight, columns, dividerThickness, dividerHeight, wedges, wedgeTopWidth, wedgeBottomWidth, wedgeDepth (sizes 0 = auto, relative to the cell) |
 | `card-tray-tilted` | Card dispenser: stacks leaning back, open front, repeats along Y | cardParams, tiltAngle, exposedHeight, frontHeight, rows, dividerThickness, dividerHeight |
 | `spacer`       | Solid filler block to take up slack         | width, depth, height |
 | `platform`     | Plate bridging trays to carry the next level | width, depth, thickness, cornerStops, stopSize, stopHeight, stopInset, locateItems |
@@ -183,7 +183,8 @@ part), which makes the open question about the mirrored assembly view in
 wall / floor overrides: `tray` → `item-tray` 1 × 1 with the same inner size;
 `divided-tray` (inner W × D, c × r, dividers t) → `item-tray` c × r with cells
 (W − (c−1)·t)/c × (D − (r−1)·t)/r; `card-tray` → `card-tray-flat` or
-`card-tray-upright` by its `orientation`. Finger notch params are dropped (no
+`card-tray-upright` by its `orientation` (flat with `gapFloorDepth` 0, so the
+raised floor does not change the height). Finger notch params are dropped (no
 equivalent); omitted params are filled with the v1 defaults where those
 differ. `examples/stacking-demo.json` and the sample project were migrated
 with the same function.
@@ -350,9 +351,14 @@ right / back side always. Shared dividers are `divider` thick, not `wall`.
 **Per type.** `item-tray` (X and Y): optional concave scoop fillets in two
 opposite walls of each cell. `card-tray-flat` (X): rectangular finger gaps
 through the walls that continue `gapFloorDepth` into the floor and `gapReach`
-(default 10 mm) into the cavity under the cards. `card-tray-upright` (X):
-trapezoid wedges in the two outer long walls (cell X = stackHeight + c, Z =
-cardHeight − exposedHeight); `keepOut` for the standing cards. `card-tray-tilted`
+(default 10 mm) into the cavity under the cards; with gaps the cavity floor is
+raised by `gapFloorDepth` (the spec's floor is `floor + gapFloorDepth`), so the
+groove ends on the structural floor and never breaks through, and the outer
+height grows by `gapFloorDepth`. `card-tray-upright` (X): trapezoid wedges in
+the two outer long walls (cell X = stackHeight + c, Z = cardHeight −
+exposedHeight), toggled by `wedges`; sizes 0 = auto: top 60 % of the cell X
+span, bottom 40 % of the top, depth 60 % of the inner height; `keepOut` for the
+standing cards. `card-tray-tilted`
 (Y): cell width = H·tan θ + T/cos θ with H = (cardHeight − exposedHeight)·cos θ;
 the tilted slot may notch the back lip on steep tilts; the front opening above
 `frontHeight` is removed; its bearing areas wrap the framework's (front opening

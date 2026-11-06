@@ -115,8 +115,8 @@ Four types, each defined as one cell that repeats inside one printed part
 with shared dividers (see `docs-containers.md` for every parameter).
 
 * **Item tray** (`item-tray`): grid of equal cells for tokens, columns x rows, flat or scoop floor.
-* **Card tray, flat** (`card-tray-flat`): card stacks lying face up in columns, finger gaps down into the floor.
-* **Card tray, upright** (`card-tray-upright`): standing card stacks in columns, wedges in the long walls.
+* **Card tray, flat** (`card-tray-flat`): card stacks lying face up in columns, finger gaps down into a floor groove (the floor is raised by the groove depth, so it never breaks through).
+* **Card tray, upright** (`card-tray-upright`): standing card stacks in columns, wedges in the long walls (on by default, sized relative to the stack slot unless set explicitly).
 * **Card tray, tilted** (`card-tray-tilted`): card dispenser, stacks leaning back with an open front, lanes in rows.
 
 The first standard set (`tray`, `divided-tray`, `card-tray`) was replaced by

@@ -6,6 +6,7 @@ import {
   cardParams,
   EPS,
   num,
+  requirePositive,
   round,
   stackEngagement,
   stacking,
@@ -43,6 +44,11 @@ function geom(item: ResolvedItem) {
     gapReach: num(item, 'gapReach', 10),
     gapSides: str<GapSides>(item, 'gapSides', GAP_SIDES, 'sides'),
   };
+}
+
+/** How far the cavity floor is raised above the structural floor: the groove depth, 0 without gaps. */
+function raisedBy(g: ReturnType<typeof geom>): number {
+  return g.gapWidth > 0 ? Math.max(0, g.gapFloorDepth) : 0;
 }
 
 type Side = 'left' | 'right' | 'front' | 'back';
@@ -126,9 +132,11 @@ function grooveRects(f: CellFrame, side: Side, width: number, reach: number) {
  * Finger gap cutter: a plain rectangular slot through the wall thickness,
  * from above the wall top (and lip) down to `floorDepth` below the cavity
  * floor, so it continues into the floor as a groove of the same width. The
- * groove runs under the wall and `reach` mm into the cavity (both cavities on
- * a shared divider, each clamped to the cell span), so a fingertip gets under
- * the edge of the last card. Deeper than the floor it simply goes through. It
+ * cavity floor is raised by exactly `floorDepth` above the structural floor
+ * (see `spec`), so the groove bottom is the structural floor top and the
+ * groove never breaks through. The groove runs under the wall and `reach` mm
+ * into the cavity (both cavities on a shared divider, each clamped to the
+ * cell span), so a fingertip gets under the edge of the last card. It
  * overshoots by EPS only through an outer face.
  */
 function gapCutter(kernel: GeometryKernel, f: CellFrame, side: Side, width: number, floorDepth: number, reach: number): Solid {
@@ -154,6 +162,14 @@ function gapCutter(kernel: GeometryKernel, f: CellFrame, side: Side, width: numb
 /**
  * Tiling spec: one cell holds a face‑up card stack, cardWidth + 2c (X) ×
  * cardHeight + 2c (Y) × stackHeight (Z), repeated along X (columns).
+ *
+ * The floor slab is `floor + gapFloorDepth` thick: the cavity floor sits at
+ * plugH + floor + gapFloorDepth and the finger-gap groove is cut from there
+ * down to the structural floor, leaving `floor` mm under it. Passing the
+ * thicker slab as the spec's floor makes the frames, outer block, bearing
+ * areas and base features follow; outer height = plugH + floor +
+ * gapFloorDepth + stackHeight + lipH. Without gaps (gapWidth 0) the floor is
+ * not raised.
  */
 function spec(item: ResolvedItem): TiledBoxSpec {
   const g = geom(item);
@@ -162,7 +178,7 @@ function spec(item: ResolvedItem): TiledBoxSpec {
     ...tilingOf(item, 'x'),
     cell: { width: g.width, depth: g.depth, height: g.height },
     wall: item.wall,
-    floor: item.floor,
+    floor: item.floor + raisedBy(g),
     stacking: stacking(item),
     cellCutters(kernel, f) {
       const out: Solid[] = [kernel.box(f.width, f.depth, f.height + f.lipH + EPS, [f.x, f.y, f.floorZ])];
@@ -209,7 +225,7 @@ export const cardTrayFlat: BoxTypeDefinition = {
       step: 0.1,
       unit: 'mm',
       group: 'Finger gaps',
-      help: 'How far the gap continues into the floor (under the wall) so a finger gets under the last card. Deeper than the floor cuts through it.',
+      help: 'How far the gap continues into the floor (under the wall) so a finger gets under the last card. The floor is raised by this much so the groove never breaks through.',
     },
     {
       key: 'gapReach',
@@ -257,7 +273,10 @@ export const cardTrayFlat: BoxTypeDefinition = {
         problems.push(`Gap width (${g.gapWidth} mm) must be smaller than the end wall it is cut from (${round(g.width)} mm).`);
       }
     }
-    tiledValidate(problems, spec(item));
+    const s = spec(item);
+    // The framework checks the whole slab (floor + groove depth); the structural floor under the groove must exist too.
+    if (s.floor > 0) requirePositive(problems, 'Floor thickness', item.floor);
+    tiledValidate(problems, s);
     return problems;
   },
 

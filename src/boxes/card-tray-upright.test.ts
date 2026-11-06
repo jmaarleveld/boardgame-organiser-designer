@@ -17,6 +17,9 @@ const def = cardTrayUpright;
 const CW = 31;
 const CD = 65.5;
 const CH = 68;
+// Auto wedge: top 60 % of the cell X span, bottom 40 % of the top.
+const TOP = 0.6 * CW;
+const BOT = 0.4 * TOP;
 
 function item(params: ItemParams = {}, wall = WALL, floor = FLOOR): ResolvedItem {
   return { id: 'x', type: def.id, label: def.name, wall, floor, params: { ...defaultParams(def), ...params } };
@@ -52,8 +55,8 @@ const wedgeVolume = (top: number, bottom: number, depth: number, lipH = 0) =>
 describe('card-tray-upright', () => {
   it('footprint, cavities and wedges for 1, 2, 3 columns', () => {
     for (const columns of [1, 2, 3]) {
-      for (const wedgeTopWidth of [30, 0]) {
-        const it = item({ columns, wedgeTopWidth });
+      for (const wedges of [true, false]) {
+        const it = item({ columns, wedges });
         const fp = def.footprint(it);
         expect(fp.width).toBeCloseTo(2 * WALL + (columns - 1) * (CW + 1.2) + CW, 9);
         expect(fp.depth).toBeCloseTo(2 * WALL + CD, 9);
@@ -61,7 +64,7 @@ describe('card-tray-upright', () => {
         expectFootprintMatchesSolid(it);
         expect(rects(it, 'cavity')).toHaveLength(columns);
         expect(rects(it, 'divider')).toHaveLength(columns - 1);
-        expect(rects(it, 'notch')).toHaveLength(wedgeTopWidth > 0 ? 2 * columns : 0);
+        expect(rects(it, 'notch')).toHaveLength(wedges ? 2 * columns : 0);
         expect(def.validate!(it)).toEqual([]);
       }
     }
@@ -72,7 +75,7 @@ describe('card-tray-upright', () => {
     expect(notches).toHaveLength(4);
     for (const n of notches) {
       if (n.kind !== 'rect') continue;
-      expect(n.w).toBeCloseTo(30, 9);
+      expect(n.w).toBeCloseTo(TOP, 9);
       expect(n.h).toBeCloseTo(WALL, 9);
       expect([0, WALL + CD]).toContainEqual(expect.closeTo(n.y, 9));
       const cx = n.x + n.w / 2;
@@ -83,8 +86,8 @@ describe('card-tray-upright', () => {
   it('stacking variants build and validate, with and without wedges', () => {
     for (const st of stackVariants) {
       for (const columns of [1, 3]) {
-        for (const wedgeTopWidth of [30, 0]) {
-          const it = item({ columns, wedgeTopWidth, ...st });
+        for (const wedges of [true, false]) {
+          const it = item({ columns, wedges, ...st });
           expectFootprintMatchesSolid(it);
           expect(def.validate!(it)).toEqual([]);
         }
@@ -94,23 +97,60 @@ describe('card-tray-upright', () => {
     expect(engagementOf(def, item({ stackBottom: 'recess' }))).toBe(2);
   });
 
-  it('wedges remove the trapezoid (auto depth = 60 % of the inner height)', () => {
+  it('wedges remove the trapezoid (auto sizes: top 60 % of the slot, bottom 40 % of the top, depth 60 % of the height)', () => {
     for (const columns of [1, 2]) {
-      const plain = k.volume(def.build(item({ columns, wedgeTopWidth: 0 }), k));
+      const plain = k.volume(def.build(item({ columns, wedges: false }), k));
       const cut = k.volume(def.build(item({ columns }), k));
-      expect(plain - cut).toBeCloseTo(2 * columns * wedgeVolume(30, 12, 0.6 * CH), 2);
+      expect(plain - cut).toBeCloseTo(2 * columns * wedgeVolume(TOP, BOT, 0.6 * CH), 2);
     }
   });
 
-  it('explicit depth, pointed bottom and the lip part', () => {
-    const plain = k.volume(def.build(item({ wedgeTopWidth: 0 }), k));
+  it('explicit sizes override, auto bottom follows an explicit top, and the lip part', () => {
+    const plain = k.volume(def.build(item({ wedges: false }), k));
     const deep = k.volume(def.build(item({ wedgeDepth: 25 }), k));
-    expect(plain - deep).toBeCloseTo(2 * wedgeVolume(30, 12, 25), 2);
-    const pointed = expectFootprintMatchesSolid(item({ wedgeBottomWidth: 0, wedgeDepth: 25 }));
-    expect(plain - k.volume(pointed)).toBeCloseTo(2 * wedgeVolume(30, 0, 25), 2);
-    const lipPlain = k.volume(def.build(item({ wedgeTopWidth: 0, stackTop: 'lip' }), k));
+    expect(plain - deep).toBeCloseTo(2 * wedgeVolume(TOP, BOT, 25), 2);
+    const explicit = expectFootprintMatchesSolid(item({ wedgeTopWidth: 20, wedgeBottomWidth: 5, wedgeDepth: 25 }));
+    expect(plain - k.volume(explicit)).toBeCloseTo(2 * wedgeVolume(20, 5, 25), 2);
+    const autoBottom = k.volume(def.build(item({ wedgeTopWidth: 20, wedgeDepth: 25 }), k));
+    expect(plain - autoBottom).toBeCloseTo(2 * wedgeVolume(20, 8, 25), 2);
+    const lipPlain = k.volume(def.build(item({ wedges: false, stackTop: 'lip' }), k));
     const lipCut = k.volume(expectFootprintMatchesSolid(item({ stackTop: 'lip' })));
-    expect(lipPlain - lipCut).toBeCloseTo(2 * wedgeVolume(30, 12, 0.6 * CH, 2), 2);
+    expect(lipPlain - lipCut).toBeCloseTo(2 * wedgeVolume(TOP, BOT, 0.6 * CH, 2), 2);
+  });
+
+  it('the default wedges leave at least `wall` of material between wedges and at the ends', () => {
+    for (const columns of [1, 3]) {
+      const it = item({ columns, stackTop: 'lip' });
+      const s = def.build(it, k);
+      const fp = def.footprint(it);
+      // A thin slice through the front wall just below the wall top: walk along X and measure the solid runs.
+      const z = FLOOR + CH - 0.5;
+      const slice = k.intersection([s, k.box(fp.width, WALL - 0.2, 0.2, [0, 0.1, z])]);
+      const step = 0.05;
+      const runs: number[] = [];
+      let run = 0;
+      for (let x = step / 2; x < fp.width; x += step) {
+        const hit = k.volume(k.intersection([slice, k.box(step, WALL, 1, [x - step / 2, 0, z - 0.1])])) > 1e-9;
+        if (hit) run += step;
+        else if (run > 0) {
+          runs.push(run);
+          run = 0;
+        }
+      }
+      if (run > 0) runs.push(run);
+      expect(runs).toHaveLength(columns + 1); // ends + one post per divider
+      for (const r of runs) expect(r).toBeGreaterThanOrEqual(WALL - 2 * step);
+      expect(rects(it, 'notch')).toHaveLength(2 * columns);
+    }
+  });
+
+  it('the wedges toggle hides the size params', () => {
+    for (const key of ['wedgeTopWidth', 'wedgeBottomWidth', 'wedgeDepth']) {
+      const p = def.params.find((x) => x.key === key)!;
+      expect(p.visibleIf!({ wedges: true })).toBe(true);
+      expect(p.visibleIf!({ wedges: false })).toBe(false);
+    }
+    expect(def.params.find((x) => x.key === 'wedges')).toMatchObject({ kind: 'boolean', default: true, group: 'Wedge' });
   });
 
   it('the wedge cuts the wall from the top down to its depth', () => {
@@ -159,8 +199,13 @@ describe('card-tray-upright', () => {
     expect(msg({ exposedHeight: 88 })).toMatch(/Exposed height \(88 mm\) must be smaller than the card height \(88 mm\)/);
     expect(msg({ wedgeTopWidth: -1 })).toMatch(/Wedge top width must not be negative/);
     expect(msg({ wedgeBottomWidth: -1 })).toMatch(/Wedge bottom width must not be negative/);
-    expect(msg({ wedgeBottomWidth: 31 })).toMatch(/Wedge bottom width \(31 mm\) must not exceed the top width \(30 mm\)/);
-    expect(msg({ wedgeTopWidth: 31 })).toMatch(/Wedge top width \(31 mm\) must be smaller than the cell width it is cut from \(31 mm\)/);
+    expect(msg({ wedgeTopWidth: 20, wedgeBottomWidth: 21 })).toMatch(/Wedge bottom width \(21 mm\) must not exceed the top width \(20 mm\)/);
+    expect(msg({ wedgeBottomWidth: 19 })).toMatch(/Wedge bottom width \(19 mm\) must not exceed the top width \(18\.6 mm\)/);
+    // Slot 31, wall 1.6: the top must stay below 31 − 2·1.6 = 27.8.
+    expect(msg({ wedgeTopWidth: 27.8 })).toMatch(/Wedge top width \(27\.8 mm\) must be smaller than 27\.8 mm/);
+    expect(def.validate!(item({ wedgeTopWidth: 27.5 }))).toEqual([]);
+    // Thin walls: at least 1 mm per side.
+    expect(def.validate!(item({ wedgeTopWidth: 29.5 }, 0.8)).join(' ')).toMatch(/smaller than 29 mm/);
     expect(msg({ wedgeDepth: 70 })).toMatch(/Wedge depth \(70 mm\) must not exceed the inner height \(68 mm\)/);
     expect(msg({ wedgeDepth: -1 })).toMatch(/Wedge depth must not be negative/);
     expect(msg({ cardWidth: 0 })).toMatch(/Card width/);
@@ -169,7 +214,7 @@ describe('card-tray-upright', () => {
     expect(msg({ columns: 2, dividerThickness: 0 })).toMatch(/Divider thickness/);
     expect(msg({ columns: 2, dividerHeight: 80 })).toMatch(/Divider height/);
     // No wedges: the wedge checks are skipped.
-    expect(def.validate!(item({ wedgeTopWidth: 0, wedgeBottomWidth: 50 }))).toEqual([]);
+    expect(def.validate!(item({ wedges: false, wedgeTopWidth: 50, wedgeBottomWidth: 60, wedgeDepth: 100 }))).toEqual([]);
     expect(def.validate!(item({ wedgeDepth: 68 }))).toEqual([]);
   });
 });

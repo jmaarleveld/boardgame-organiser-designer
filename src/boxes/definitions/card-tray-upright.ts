@@ -5,6 +5,7 @@ import {
   cardDims,
   cardParams,
   EPS,
+  bool,
   num,
   round,
   stackEngagement,
@@ -31,26 +32,42 @@ import {
 
 /** Auto wedge depth as a fraction of the inner height (wedgeDepth 0). */
 const AUTO_WEDGE_DEPTH = 0.6;
+/** Auto wedge top width as a fraction of the cell's X span (wedgeTopWidth 0). */
+const AUTO_WEDGE_TOP = 0.6;
+/** Auto wedge bottom width as a fraction of the resolved top width (wedgeBottomWidth 0). */
+const AUTO_WEDGE_BOTTOM = 0.4;
 
 /**
  * Geometry of an upright card tray cell: the cards stand portrait, faces
  * looking ±X, stacked along X. Cell X = stackHeight + c, Y = cardWidth + 2c,
  * Z = cardHeight − exposedHeight (the rest sticks out above the wall top).
+ *
+ * Wedge sizes resolve relative to the cell when 0 (auto): top = 60 % of the
+ * cell X span, bottom = 40 % of the resolved top, depth = 60 % of the inner
+ * height. Positive values override. `*Raw` keep the entered values for
+ * validation.
  */
 function geom(item: ResolvedItem) {
   const cards = cardDims(item);
   const c = cards.clearance;
   const exposed = num(item, 'exposedHeight', 20);
   const height = cards.cardHeight - exposed;
+  const width = cards.stackHeight + c;
+  const wedgeTopRaw = num(item, 'wedgeTopWidth', 0);
+  const wedgeBottomRaw = num(item, 'wedgeBottomWidth', 0);
   const wedgeDepthRaw = num(item, 'wedgeDepth', 0);
+  const wedgeTop = wedgeTopRaw > 0 ? wedgeTopRaw : AUTO_WEDGE_TOP * width;
   return {
     cards,
     exposed,
-    width: cards.stackHeight + c,
+    width,
     depth: cards.cardWidth + 2 * c,
     height,
-    wedgeTop: num(item, 'wedgeTopWidth', 30),
-    wedgeBottom: num(item, 'wedgeBottomWidth', 12),
+    wedges: bool(item, 'wedges', true),
+    wedgeTopRaw,
+    wedgeBottomRaw,
+    wedgeTop,
+    wedgeBottom: wedgeBottomRaw > 0 ? wedgeBottomRaw : AUTO_WEDGE_BOTTOM * wedgeTop,
     wedgeDepthRaw,
     wedgeDepth: wedgeDepthRaw > 0 ? wedgeDepthRaw : AUTO_WEDGE_DEPTH * height,
   };
@@ -115,7 +132,7 @@ function wedgeCutter(kernel: GeometryKernel, f: CellFrame, side: WallSide, g: Ge
 }
 
 function hasWedges(g: Geom): boolean {
-  return g.wedgeTop > 0 && g.wedgeDepth > 0;
+  return g.wedges && g.wedgeTop > 0 && g.wedgeDepth > 0;
 }
 
 /**
@@ -171,27 +188,36 @@ export const cardTrayUpright: BoxTypeDefinition = {
     ...tilingParams('x'),
     { ...dividerHeightParam, visibleIf: (p) => Number(p.columns) > 1 },
     {
+      key: 'wedges',
+      label: 'Wedges',
+      kind: 'boolean',
+      default: true,
+      group: 'Wedge',
+      help: 'Cut a wedge into the top of both long outer walls of every stack, to grab the cards.',
+    },
+    {
       key: 'wedgeTopWidth',
       label: 'Top width',
       kind: 'number',
-      default: 30,
+      default: 0,
       min: 0,
       step: 0.5,
       unit: 'mm',
       group: 'Wedge',
-      help: 'Width of the wedge at the wall top; 0 = no wedges.',
+      help: 'Width of the wedge at the wall top; 0 = auto (60 % of the stack slot width).',
+      visibleIf: (p) => p.wedges !== false,
     },
     {
       key: 'wedgeBottomWidth',
       label: 'Bottom width',
       kind: 'number',
-      default: 12,
+      default: 0,
       min: 0,
       step: 0.5,
       unit: 'mm',
       group: 'Wedge',
-      help: 'Width of the wedge at its lowest point (0 = pointed).',
-      visibleIf: (p) => Number(p.wedgeTopWidth) > 0,
+      help: 'Width of the wedge at its lowest point; 0 = auto (40 % of the top width).',
+      visibleIf: (p) => p.wedges !== false,
     },
     {
       key: 'wedgeDepth',
@@ -203,7 +229,7 @@ export const cardTrayUpright: BoxTypeDefinition = {
       unit: 'mm',
       group: 'Wedge',
       help: 'How far the wedge reaches down from the wall top; 0 = auto (60 % of the inner height).',
-      visibleIf: (p) => Number(p.wedgeTopWidth) > 0,
+      visibleIf: (p) => p.wedges !== false,
     },
     ...stackingParams,
   ],
@@ -221,15 +247,20 @@ export const cardTrayUpright: BoxTypeDefinition = {
     if (!(g.height > 0)) {
       problems.push(`Exposed height (${g.exposed} mm) must be smaller than the card height (${g.cards.cardHeight} mm).`);
     }
-    if (g.wedgeTop < 0) problems.push(`Wedge top width must not be negative (is ${g.wedgeTop}).`);
-    if (g.wedgeBottom < 0) problems.push(`Wedge bottom width must not be negative (is ${g.wedgeBottom}).`);
-    if (g.wedgeDepthRaw < 0) problems.push(`Wedge depth must not be negative (is ${g.wedgeDepthRaw}).`);
-    if (g.wedgeTop > 0) {
-      if (g.wedgeBottom > g.wedgeTop) {
-        problems.push(`Wedge bottom width (${g.wedgeBottom} mm) must not exceed the top width (${g.wedgeTop} mm).`);
+    if (g.wedges) {
+      if (g.wedgeTopRaw < 0) problems.push(`Wedge top width must not be negative (is ${g.wedgeTopRaw}).`);
+      if (g.wedgeBottomRaw < 0) problems.push(`Wedge bottom width must not be negative (is ${g.wedgeBottomRaw}).`);
+      if (g.wedgeDepthRaw < 0) problems.push(`Wedge depth must not be negative (is ${g.wedgeDepthRaw}).`);
+      if (g.wedgeBottomRaw > 0 && g.wedgeBottom > g.wedgeTop) {
+        problems.push(`Wedge bottom width (${round(g.wedgeBottom)} mm) must not exceed the top width (${round(g.wedgeTop)} mm).`);
       }
-      if (g.wedgeTop >= g.width) {
-        problems.push(`Wedge top width (${g.wedgeTop} mm) must be smaller than the cell width it is cut from (${round(g.width)} mm).`);
+      // Leave a post at least max(wall, 1) mm wide on both sides of the wedge (between neighbours and at the ends).
+      const post = Math.max(item.wall, 1);
+      const maxTop = g.width - 2 * post;
+      if (g.wedgeTopRaw > 0 && g.wedgeTop >= maxTop) {
+        problems.push(
+          `Wedge top width (${round(g.wedgeTop)} mm) must be smaller than ${round(maxTop)} mm (the stack slot width ${round(g.width)} mm minus ${round(post)} mm on each side) so wall remains between the wedges.`,
+        );
       }
       if (g.height > 0 && g.wedgeDepth > g.height) {
         problems.push(`Wedge depth (${round(g.wedgeDepth)} mm) must not exceed the inner height (${round(g.height)} mm).`);

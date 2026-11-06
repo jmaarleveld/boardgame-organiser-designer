@@ -120,7 +120,7 @@ describe('card-tray-flat', () => {
         const fp = cardTrayFlat.footprint(it);
         expect(fp.width).toBeCloseTo(2 * WALL + (columns - 1) * (cw + 1.2) + cw, 9);
         expect(fp.depth).toBeCloseTo(2 * WALL + cd, 9);
-        expect(fp.height).toBeCloseTo(FLOOR + 30, 9);
+        expect(fp.height).toBeCloseTo(FLOOR + 2 + 30, 9); // floor raised by the 2 mm groove depth
         expectFootprintMatchesSolid(cardTrayFlat, it);
         expect(rects(cardTrayFlat, it, 'cavity')).toHaveLength(columns);
         // One gap per wall / divider parallel to Y (columns + 1), two per cell in the ends.
@@ -136,52 +136,63 @@ describe('card-tray-flat', () => {
     }
   });
 
+  // Volume of a gapless solid block with `columns` card cavities, floor slab `slab` thick.
+  const blockVolume = (columns: number, slab: number) => {
+    const W = 2 * WALL + columns * cw + (columns - 1) * 1.2;
+    const D = 2 * WALL + cd;
+    return W * D * (slab + 30) - columns * cw * cd * 30;
+  };
+
   it('gap volume: full wall height plus the floor groove', () => {
-    const plain = k.volume(cardTrayFlat.build(item(cardTrayFlat, { gapWidth: 0 }), k));
-    const gapped = k.volume(cardTrayFlat.build(item(cardTrayFlat), k));
-    // Two outer side walls, each 25 wide × wall thick × (30 + 2 groove).
-    // The default 2 mm groove is deeper than the 1.2 mm floor: it goes through.
-    // Reach 0: the groove spans only the wall thickness.
+    const G = 2; // default groove depth = how far the floor is raised
+    // Two outer side walls, each 25 wide × wall thick × (30 + groove depth).
     const noReach = k.volume(cardTrayFlat.build(item(cardTrayFlat, { gapReach: 0 }), k));
-    expect(plain - noReach).toBeCloseTo(2 * 25 * WALL * (30 + FLOOR), 2);
-    // Default reach 10: the groove also continues 10 mm into the cavity (floor only, 1.2 mm thick).
-    expect(plain - gapped).toBeCloseTo(2 * 25 * WALL * (30 + FLOOR) + 2 * 25 * 10 * FLOOR, 2);
+    expect(noReach).toBeCloseTo(blockVolume(1, FLOOR + G) - 2 * 25 * WALL * (30 + G), 2);
+    // Default reach 10: the groove also continues 10 mm into the cavity, groove depth deep.
+    const gapped = k.volume(cardTrayFlat.build(item(cardTrayFlat), k));
+    expect(gapped).toBeCloseTo(blockVolume(1, FLOOR + G) - 2 * 25 * WALL * (30 + G) - 2 * 25 * 10 * G, 2);
+    // Without gaps the floor is not raised.
+    expect(k.volume(cardTrayFlat.build(item(cardTrayFlat, { gapWidth: 0 }), k))).toBeCloseTo(blockVolume(1, FLOOR), 2);
+    expect(cardTrayFlat.footprint(item(cardTrayFlat, { gapWidth: 0 })).height).toBeCloseTo(FLOOR + 30, 9);
   });
 
   it('the floor groove reaches gapReach into the cavity, no further', () => {
     const fp = 5;
     const reach = 6;
-    const s = cardTrayFlat.build(item(cardTrayFlat, { gapFloorDepth: 0.5, gapReach: reach }), k);
+    const G = 0.5;
+    const s = cardTrayFlat.build(item(cardTrayFlat, { gapFloorDepth: G, gapReach: reach }), k);
     const y0 = WALL + cd / 2 - 12;
     const top = (x: number) => {
-      const b = k.bounds(k.intersection([s, k.box(1, 24, FLOOR + 1, [x, y0, 0])]));
+      const b = k.bounds(k.intersection([s, k.box(1, 24, FLOOR + G + 1, [x, y0, 0])]));
       return b.max[2];
     };
-    // Just inside the cavity next to the left wall gap: floor lowered by the groove depth.
-    expect(top(WALL + 0.5)).toBeCloseTo(FLOOR - 0.5, 6);
-    expect(top(WALL + reach - 1.5)).toBeCloseTo(FLOOR - 0.5, 6);
-    // Beyond the reach: full floor.
-    expect(top(WALL + reach + 0.5)).toBeCloseTo(FLOOR, 6);
-    expect(top(WALL + fp + 20)).toBeCloseTo(FLOOR, 6);
+    // Just inside the cavity next to the left wall gap: down to the structural floor.
+    expect(top(WALL + 0.5)).toBeCloseTo(FLOOR, 6);
+    expect(top(WALL + reach - 1.5)).toBeCloseTo(FLOOR, 6);
+    // Beyond the reach: the raised cavity floor.
+    expect(top(WALL + reach + 0.5)).toBeCloseTo(FLOOR + G, 6);
+    expect(top(WALL + fp + 20)).toBeCloseTo(FLOOR + G, 6);
     // Reach is clamped to the cell: huge reach never cuts past the far wall.
-    const big = cardTrayFlat.build(item(cardTrayFlat, { gapFloorDepth: 0.5, gapReach: 500 }), k);
+    const big = cardTrayFlat.build(item(cardTrayFlat, { gapFloorDepth: G, gapReach: 500 }), k);
     expect(k.isValid(big)).toBe(true);
     const farWall = k.intersection([big, k.box(WALL, 24, 30, [WALL + cw + 0.01, y0, FLOOR + 1])]);
     expect(k.volume(farWall)).toBeLessThan(1e-6); // gap there is the wall's own, wall remains below
   });
 
-  it('the gap groove reaches below the floor top', () => {
-    const s = cardTrayFlat.build(item(cardTrayFlat), k);
-    const fp = cardTrayFlat.footprint(item(cardTrayFlat));
-    // Probe the left wall at the gap, below the floor top: only the floor under the groove remains.
-    const probe = k.box(WALL - 0.2, 24, FLOOR, [0.1, WALL + cd / 2 - 12, 0]);
-    const left = k.intersection([s, probe]);
-    expect(k.volume(left)).toBeLessThan(1e-6); // the default 2 mm groove goes through the 1.2 mm floor
-    // With a shallow groove the floor stays under it, its top at floor − depth.
-    const shallow = cardTrayFlat.build(item(cardTrayFlat, { gapFloorDepth: 0.5 }), k);
-    const b = k.bounds(k.intersection([shallow, probe]));
-    expect(b.max[2]).toBeCloseTo(FLOOR - 0.5, 6);
-    expect(fp.height).toBeCloseTo(31.2, 9);
+  it('the groove never breaks through: exactly `floor` of material under it', () => {
+    for (const G of [0.5, 2, 5]) {
+      const it = item(cardTrayFlat, { gapFloorDepth: G });
+      const s = cardTrayFlat.build(it, k);
+      // Probe the left wall at the gap, up to the cavity floor: only the structural floor remains.
+      const probe = k.box(WALL - 0.2, 24, FLOOR + G, [0.1, WALL + cd / 2 - 12, 0]);
+      const under = k.intersection([s, probe]);
+      expect(k.bounds(under).max[2]).toBeCloseTo(FLOOR, 6);
+      expect(k.volume(under)).toBeCloseTo((WALL - 0.2) * 24 * FLOOR, 4);
+      // Same inside the cavity, in the groove.
+      const inCavity = k.intersection([s, k.box(5, 24, FLOOR + G, [WALL + 1, WALL + cd / 2 - 12, 0])]);
+      expect(k.volume(inCavity)).toBeCloseTo(5 * 24 * FLOOR, 4);
+      expect(cardTrayFlat.footprint(it).height).toBeCloseTo(FLOOR + G + 30, 9);
+    }
   });
 
   it('gaps cut the shared dividers once', () => {
@@ -190,11 +201,10 @@ describe('card-tray-flat', () => {
     expect(notches).toHaveLength(3 + 4); // 3 wall rects + 4 groove rects (one per adjacent cavity)
     const div = notches.find((n) => n.kind === 'rect' && Math.abs(n.x - (WALL + cw)) < 1e-9);
     expect(div).toMatchObject({ w: expect.closeTo(1.2, 9), h: 25 });
-    const plain = k.volume(cardTrayFlat.build(item(cardTrayFlat, { columns: 2, gapWidth: 0 }), k));
     const gapped = k.volume(cardTrayFlat.build(it, k));
-    // Walls and divider through the full height, plus 10 mm of 1.2 mm floor groove into each cavity per gap:
-    // outer left (1 cavity), divider (2 cavities), outer right (1 cavity).
-    expect(plain - gapped).toBeCloseTo(25 * (2 * WALL + 1.2) * (30 + FLOOR) + 25 * 10 * FLOOR * 4, 2);
+    // Walls and divider through the full height plus the 2 mm groove, plus 10 mm of 2 mm deep
+    // groove into each cavity per gap: outer left (1 cavity), divider (2 cavities), outer right (1 cavity).
+    expect(gapped).toBeCloseTo(blockVolume(2, FLOOR + 2) - 25 * (2 * WALL + 1.2) * (30 + 2) - 25 * 10 * 2 * 4, 2);
   });
 
   it('stacking variants build and validate', () => {
@@ -215,8 +225,10 @@ describe('card-tray-flat', () => {
     expect(cardTrayFlat.validate!(item(cardTrayFlat, { columns: 0 })).join()).toMatch(/Columns/);
     expect(cardTrayFlat.validate!(item(cardTrayFlat, { cardWidth: -1 })).join()).toMatch(/Card width/);
     expect(cardTrayFlat.validate!(item(cardTrayFlat, { clearance: -1 })).join()).toMatch(/Clearance/);
-    // A groove through the floor is allowed.
+    expect(cardTrayFlat.validate!(item(cardTrayFlat, { gapFloorDepth: -1 })).join()).toMatch(/Groove depth must not be negative/);
+    // The groove depth raises the floor, so a deep groove is fine; the structural floor must still exist.
     expect(cardTrayFlat.validate!(item(cardTrayFlat, { gapFloorDepth: 5 }))).toEqual([]);
     expect(k.isValid(cardTrayFlat.build(item(cardTrayFlat, { gapFloorDepth: 5 }), k))).toBe(true);
+    expect(cardTrayFlat.validate!(item(cardTrayFlat, {}, WALL, 0)).join()).toMatch(/Floor thickness must be greater than 0 \(is 0\)/);
   });
 });

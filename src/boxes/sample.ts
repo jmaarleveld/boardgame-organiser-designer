@@ -26,7 +26,7 @@ export function sampleProject(): Project {
       rotation: 0,
       params: { innerWidth: 29.2, innerDepth: 29.4, innerHeight: 25, columns: 3, rows: 2 },
     },
-    // 68.7 × 93.2 × 31.2
+    // 68.7 × 93.2 × 33.2 (floor raised by the 2 mm finger groove)
     { id: 'sample-cards-flat', type: 'card-tray-flat', label: 'Cards (flat)', x: 1, y: 70, rotation: 0, params: {} },
     // Mini cards (41 × 63) standing: 34.2 × 46.2 × 49.2, the cards reach 64.2 (< 70).
     // Standard 88 mm cards cannot stand in a 70 mm box (the stack fit check flags them).

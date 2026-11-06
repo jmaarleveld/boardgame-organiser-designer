@@ -57,7 +57,8 @@ function clean(v: number): number {
  *   c × r with per-cell innerWidth (W − (c−1)·t)/c and innerDepth (D − (r−1)·t)/r.
  * - `card-tray` → `card-tray-flat` or `card-tray-upright` by its orientation
  *   (card params, clearance, stack height and, upright, exposed height carry
- *   over; gaps and wedges get their defaults).
+ *   over; gaps and wedges get their defaults, except that a flat tray gets
+ *   gapFloorDepth 0: a groove would raise the floor and the outer height).
  *
  * Every other item is returned unchanged.
  */
@@ -104,7 +105,8 @@ export function migrateLegacyItem(item: PlacedItem): PlacedItem {
       return {
         ...item,
         type: upright ? 'card-tray-upright' : 'card-tray-flat',
-        params: without(params, upright ? V1_DROPPED : [...V1_DROPPED, 'exposedHeight']),
+        // Flat: no floor groove, so the floor is not raised and the footprint stays the same.
+        params: upright ? without(params, V1_DROPPED) : { ...without(params, [...V1_DROPPED, 'exposedHeight']), gapFloorDepth: 0 },
       };
     }
     default:

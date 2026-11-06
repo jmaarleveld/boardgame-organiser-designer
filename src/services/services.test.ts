@@ -130,7 +130,7 @@ describe('persistence', () => {
       floorShape: 'flat', stackBottom: 'recess',
     });
     expect(byId.get('dd')!.params).toMatchObject({ innerWidth: 29.2, innerDepth: 29.4, columns: 3, rows: 2 });
-    expect(byId.get('cf')).toMatchObject({ type: 'card-tray-flat', params: {} });
+    expect(byId.get('cf')).toMatchObject({ type: 'card-tray-flat', params: { gapFloorDepth: 0 } });
     expect(byId.get('cu')).toMatchObject({ type: 'card-tray-upright', params: { exposedHeight: 15, cardWidth: 41, stackBottom: 'plug' } });
     expect(byId.get('cu')!.params).not.toHaveProperty('orientation');
     expect(byId.get('x')).toEqual(proj.items[6]);

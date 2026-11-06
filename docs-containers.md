@@ -17,7 +17,7 @@ themselves: that is the framework's job, so repeating is never hard‑coded.
 
 | id                  | Cell                                             | Repeats   |
 |---------------------|--------------------------------------------------|-----------|
-| `card-tray-flat`    | card stack lying flat, finger gaps to the floor  | columns (X) |
+| `card-tray-flat`    | card stack lying flat, finger gaps into a raised floor | columns (X) |
 | `card-tray-upright` | card stack standing, wedges in the long outer walls | columns (X) |
 | `card-tray-tilted`  | standing stack leaning back, open front (dispenser) | rows (Y) |
 | `item-tray`         | small token tray, flat or scoop floor            | columns × rows |
@@ -116,12 +116,23 @@ above the wall top and lip down through the wall, continuing `gapFloorDepth`
 (default 2) below the cavity floor as a groove, across the full wall thickness.
 The groove also continues `gapReach` (default 10, clamped to the cell span)
 into the cavity under the cards, so a fingertip gets under the last card (both
-neighbouring cavities on a shared divider). If `gapFloorDepth >= floor` the
-groove goes through the floor; allowed, no warning. `gapSides`: `sides` (default;
-walls parallel to Y, at the cards' long edges) / `ends` (walls parallel to X) /
-`both`. Gaps are centred on the cell and cut shared dividers too (by the
-convention above). Validation: card sizes, non-negative gap values, gap
-narrower than the wall it is cut from. No `dividerHeight`.
+neighbouring cavities on a shared divider).
+
+**Raised floor.** With gaps (`gapWidth > 0`) the cavity floor is raised by
+`gapFloorDepth` above the structural floor: the spec's floor is
+`floor + gapFloorDepth`, so the cavity floor sits at Z = plugH + floor +
+gapFloorDepth and frames, outer block, bearing areas and base features follow.
+The groove is cut from the cavity floor down to the structural floor (exactly
+`gapFloorDepth` deep, `floor` mm of material left under it), so it never breaks
+through; the wall gap runs from the top down to the groove bottom. Outer height
+= plugH + floor + gapFloorDepth + stackHeight + lipH (default 1.2 + 2 + 30 =
+33.2 mm without stacking). Without gaps the floor is not raised.
+
+`gapSides`: `sides` (default; walls parallel to Y, at the cards' long edges) /
+`ends` (walls parallel to X) / `both`. Gaps are centred on the cell and cut
+shared dividers too (by the convention above). Validation: card sizes,
+non-negative gap values (`gapFloorDepth >= 0`), a positive structural floor,
+gap narrower than the wall it is cut from. No `dividerHeight`.
 
 ### 2. `card-tray-upright` — Card tray (upright)
 
@@ -130,9 +141,15 @@ Cell: `stackHeight + c` (X, the stack direction) x `cardWidth + 2c` (Y) x
 "Cards". Cards stand portrait, faces looking +-X. Repeats along X. **Wedges**
 (group "Wedge"): a trapezoid cut from the top of the two outer long walls (the
 walls parallel to X at the front and back, only when outer), one pair per cell,
-centred on the cell: `wedgeTopWidth` (30, 0 = none), `wedgeBottomWidth` (12,
-0 = pointed), `wedgeDepth` (0 = auto, 60 % of the inner height), through the
-wall and the lip (an XZ polygon extruded and rotated into place). Dividers
+centred on the cell, through the wall and the lip (an XZ polygon extruded and
+rotated into place). `wedges` (boolean, default true) switches them on; the
+three sizes are shown only when it is on and default to 0 = auto, relative to
+the cell: `wedgeTopWidth` 60 % of the cell X span (stackHeight + c; 18.6 mm by
+default), `wedgeBottomWidth` 40 % of the resolved top (7.44 mm),
+`wedgeDepth` 60 % of the inner height (40.8 mm). Explicit values override.
+Validation (wedges on): sizes non-negative, an explicit bottom <= the top, an
+explicit top < cell X span − 2·max(wall, 1) so a post remains between
+neighbouring wedges and at the ends, depth <= inner height. Dividers
 between stacks (parallel to Y) are full height unless `dividerHeight` (group
 "Repeat", shown with more than one column) lowers them. `keepOut`: one rect per
 cell cavity, `exposedHeight - lipH` high, for the standing cards.
@@ -204,7 +221,8 @@ finger notches.
   deleted, not just hidden from the palette. On load `tray` becomes `item-tray`
   1 × 1 (same inner size), `divided-tray` an `item-tray` c × r with cell =
   ((W − (c−1)·t)/c) × ((D − (r−1)·t)/r), `card-tray` a `card-tray-flat` or
-  `card-tray-upright` by orientation. Footprints and stacking params are
+  `card-tray-upright` by orientation (flat with `gapFloorDepth` 0, so the
+  raised floor does not change the height). Footprints and stacking params are
   unchanged; finger notches are dropped. `examples/stacking-demo.json` and the
   sample project were migrated with the same function and report exactly as
   before.
