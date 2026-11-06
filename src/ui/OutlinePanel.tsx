@@ -63,7 +63,7 @@ export function OutlinePanel() {
       </h2>
       {open && (
         <>
-          <p className="muted outline-hint">Drag to change stack order (lower = earlier = underneath)</p>
+          <p className="muted outline-hint">Items are listed under what they rest on. Drag a row onto another row to slip it underneath that item.</p>
           {rows.length === 0 ? (
             <p className="muted">No items.</p>
           ) : (
@@ -116,7 +116,7 @@ export function OutlinePanel() {
                       setDragId(null);
                       setOverId(null);
                     }}
-                    title={`Stack position ${n.index + 1}. Drop another row here to place it before this one.`}
+                    title={`Stack position ${n.index + 1}. Drop another row here to place it underneath this item.`}
                   >
                     <span className={`outline-dot ${status}`} title={status} aria-label={status} />
                     <span className="outline-label">{n.item.label}</span>
