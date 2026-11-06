@@ -182,3 +182,5 @@ input:disabled { background: #f1f2f4; color: var(--muted); }
 .outline-label { font-weight: 600; }
 .outline-z { margin-left: auto; }
 .outline-also { flex-basis: 100%; font-size: 11px; padding-left: 14px; }
+.issues-heading { margin-bottom: 4px; }
+.issues-more { margin-top: 4px; font-size: 11px; }

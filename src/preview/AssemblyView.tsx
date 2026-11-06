@@ -16,6 +16,7 @@ import { classifyItems, localSize, placementMatrix } from './assemblyScene';
 import { CAMERA_PRESETS, type CameraPreset } from './assemblyCamera';
 import { createAssemblyScene, type AssemblyEntry, type AssemblySceneApi } from './assemblyRenderer';
 import { useAssemblyMeshes } from './assemblyMeshes';
+import { formatBuildFailures } from './buildFailures';
 import './preview.css';
 
 export type { AssemblyEntry, AssemblySceneApi } from './assemblyRenderer';
@@ -196,7 +197,11 @@ export default function AssemblyView({ className, editable = false }: AssemblyVi
     [items, settings, tints, selectedId, itemKeys, cached, faded, offsets],
   );
 
-  const failed = items.filter((i) => meshes.errorFor(itemKeys.get(i.id) ?? null)).length;
+  const failures = items.flatMap((i) => {
+    const message = meshes.errorFor(itemKeys.get(i.id) ?? null);
+    return message ? [{ id: i.id, label: i.label || i.id, message }] : [];
+  });
+  const failureBanner = formatBuildFailures(failures);
   let status: string | null = null;
   if (items.length) {
     if (!exporter) status = 'Geometry unavailable — showing footprints';
@@ -405,7 +410,26 @@ export default function AssemblyView({ className, editable = false }: AssemblyVi
           {status}
         </div>
       )}
-      {failed > 0 && <div className="assembly-failed error-text">{failed} item{failed > 1 ? 's' : ''} could not be generated</div>}
+      {failureBanner && (
+        <div className="assembly-failed error-text" role="alert">
+          <div className="assembly-failed-heading">{failureBanner.heading}</div>
+          <ul>
+            {failureBanner.lines.map((l) => (
+              <li key={l.id}>
+                <button
+                  type="button"
+                  className={`assembly-failed-line${l.id === selectedId ? ' current' : ''}`}
+                  title={l.full}
+                  onClick={() => select(l.id)}
+                >
+                  {l.text}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {failureBanner.more > 0 && <div className="assembly-failed-more">and {failureBanner.more} more</div>}
+        </div>
+      )}
       {!items.length && <div className="preview3d-msg">The game box is empty. Add boxes from the palette.</div>}
       {editable && <MiniMap summary={summary} tints={tints} onFocus={(x, y) => api?.focusOn(x, y)} />}
       {editable && (

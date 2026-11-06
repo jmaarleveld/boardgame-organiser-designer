@@ -7,7 +7,11 @@
 .assembly .preview3d { height: 100%; }
 .assembly-controls { position: absolute; top: 6px; left: 6px; display: flex; gap: 4px; }
 .assembly-controls button { padding: 2px 8px; font-size: 12px; background: rgba(255, 255, 255, 0.92); }
-.assembly-failed { position: absolute; left: 8px; bottom: 6px; font-size: 11px; pointer-events: none; }
+.assembly-failed { position: absolute; left: 8px; bottom: 6px; font-size: 11px; max-width: min(640px, calc(100% - 200px)); padding: 3px 6px; border: 1px solid currentColor; border-radius: 4px; background: rgba(255, 255, 255, 0.94); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); }
+.assembly-failed-heading { font-weight: 600; }
+.assembly-failed ul { list-style: none; margin: 0; padding: 0; }
+.assembly-failed-line { display: block; width: 100%; padding: 1px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.assembly-failed-line:hover, .assembly-failed-line.current { text-decoration: underline; }
 .assembly .assembly-status { top: auto; bottom: 6px; right: 6px; }
 .assembly-presets { display: flex; gap: 0; }
 .assembly-presets button { border-radius: 0; margin-left: -1px; }
