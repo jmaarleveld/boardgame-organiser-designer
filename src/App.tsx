@@ -5,6 +5,7 @@ import { useStore } from './state/store';
 import { layoutSummary } from './model/layout';
 import { nudgeDelta } from './model/drag';
 import { Palette } from './ui/Palette';
+import { OutlinePanel } from './ui/OutlinePanel';
 import { SettingsPanel } from './ui/SettingsPanel';
 import { TopView } from './ui/TopView';
 import { Inspector } from './ui/Inspector';
@@ -303,6 +304,7 @@ export default function App({ services, onRetryKernel }: AppProps) {
         <aside className="left">
           <SettingsPanel bggSlot={<BggSlot services={services} />} />
           <Palette />
+          <OutlinePanel />
         </aside>
 
         <main className="centre">
