@@ -84,12 +84,29 @@ function scadHeader(project: Project, items: PlacedItem[]): string {
   ].join('\n');
 }
 
+/**
+ * The error to report for a box build that threw. When the item's own
+ * validation already reports problems, the throw is almost always their
+ * consequence (e.g. a negative inner height reaching a kernel primitive), so
+ * the validation message leads and the kernel message follows as detail.
+ */
+export function explainBuildError(problems: readonly string[], e: unknown): Error {
+  const detail = e instanceof Error ? e.message : String(e);
+  if (problems.length === 0) return e instanceof Error ? e : new Error(detail);
+  return new Error(`${problems.join(' ')} (geometry: ${detail})`, { cause: e });
+}
+
 export function createExporter(getKernel: () => Promise<GeometryKernel>): Exporter {
   function buildSolid(kernel: GeometryKernel, project: Project, itemId: string): Solid {
     const item = project.items.find((i) => i.id === itemId);
     if (!item) throw new Error(`Item "${itemId}" not found`);
     const def = getBoxType(item.type);
-    return def.build(resolveItem(item, project.settings, project.items), kernel);
+    const resolved = resolveItem(item, project.settings, project.items);
+    try {
+      return def.build(resolved, kernel);
+    } catch (e) {
+      throw explainBuildError(def.validate?.(resolved) ?? [], e);
+    }
   }
 
   function buildScad(project: Project, items: PlacedItem[]): string {

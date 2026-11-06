@@ -5,7 +5,7 @@ import { createBggClient, parseSearch, parseVersions } from './bgg';
 import { createPersistence, migrateLegacyItem, validateProject } from './persistence';
 import { registerAllBoxTypes } from '../boxes/index';
 import { placedFootprint } from '../model/resolve';
-import { createExporter } from './exporter';
+import { createExporter, explainBuildError } from './exporter';
 import { clearRegistry, registerBoxType } from '../boxes/registry';
 import { createEmptyProject, type PlacedItem, type Project } from '../model/types';
 import type { GeometryKernel } from '../geometry/types';
@@ -275,3 +275,21 @@ describe('exporter', () => {
     expect(m.positions.length).toBe(3);
   });
 });
+
+describe('explainBuildError', () => {
+  it('passes a build error through when validation finds nothing', () => {
+    const e = new Error('Invalid box(width=1, depth=1, height=-2): height must be a finite number > 0');
+    expect(explainBuildError([], e)).toBe(e);
+    expect(explainBuildError([], 'boom').message).toBe('boom');
+  });
+
+  it('leads with the validation problems when there are any', () => {
+    const e = new Error('Invalid box(width=1, depth=1, height=-2): height must be a finite number > 0');
+    const out = explainBuildError(['Exposed height (20 mm) must be smaller than the card height (10 mm).'], e);
+    expect(out.message).toBe(
+      'Exposed height (20 mm) must be smaller than the card height (10 mm). (geometry: Invalid box(width=1, depth=1, height=-2): height must be a finite number > 0)',
+    );
+    expect(out.cause).toBe(e);
+  });
+});
+

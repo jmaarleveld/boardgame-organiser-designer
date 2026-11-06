@@ -3,6 +3,7 @@
  * OpenSCAD source instead of computing geometry. Analysis and mesh methods
  * are unsupported.
  */
+import { requireFiniteOffset, requirePositiveDims, requireValidPolygon } from './guards';
 import type { Bounds, GeometryKernel, MeshData, Solid, Vec2, Vec3 } from './types';
 
 const UNSUPPORTED = 'not supported by the OpenSCAD kernel';
@@ -53,12 +54,19 @@ export type ScadKernel = GeometryKernel & { toScad(solid: Solid, header?: string
 export function createScadKernel(): ScadKernel {
   return {
     box(w, d, h, at) {
+      requirePositiveDims('box', { width: w, depth: d, height: h });
+      requireFiniteOffset('box', at);
       return node(withTranslate(at, `cube(${vec([w, d, h])});`));
     },
     cylinder(r, h, at, segments) {
+      requirePositiveDims('cylinder', { radius: r, height: h });
+      requireFiniteOffset('cylinder', at);
       return node(withTranslate(at, `cylinder(r=${scadNum(r)}, h=${scadNum(h)}, $fn=${segments ?? DEFAULT_FN});`));
     },
     extrude(poly: Vec2[], h, at) {
+      requirePositiveDims('extrude', { height: h });
+      requireValidPolygon('extrude', poly);
+      requireFiniteOffset('extrude', at);
       const pts = `[${poly.map((p) => vec(p)).join(', ')}]`;
       return node(withTranslate(at, `linear_extrude(height=${scadNum(h)}) polygon(${pts});`));
     },

@@ -19,6 +19,7 @@ import Module from 'manifold-3d';
 import type { Manifold, ManifoldToplevel } from 'manifold-3d';
 import type { Bounds, GeometryKernel, MeshData, Solid, Vec2, Vec3 } from './types';
 import { writeBinaryStl } from './stl';
+import { requireFiniteOffset, requirePositiveDims, requireValidPolygon } from './guards';
 
 interface SolidImpl extends Solid {
   manifold: Manifold | null;
@@ -93,10 +94,17 @@ function makeKernel(wasm: ManifoldToplevel): GeometryKernel {
 
   return {
     box(width, depth, height, at) {
+      requirePositiveDims('box', { width, depth, height });
+      requireFiniteOffset('box', at);
       return wrap(placed(Manifold.cube([width, depth, height], false), at));
     },
 
     cylinder(radius, height, at, segments) {
+      requirePositiveDims('cylinder', { radius, height });
+      requireFiniteOffset('cylinder', at);
+      if (segments !== undefined && !(Number.isInteger(segments) && segments >= 3)) {
+        throw new Error(`Invalid cylinder: segments=${segments} must be an integer >= 3`);
+      }
       return wrap(
         placed(
           Manifold.cylinder(height, radius, radius, segments ?? DEFAULT_SEGMENTS, false),
@@ -106,6 +114,9 @@ function makeKernel(wasm: ManifoldToplevel): GeometryKernel {
     },
 
     extrude(polygon: Vec2[], height, at) {
+      requirePositiveDims('extrude', { height });
+      requireValidPolygon('extrude', polygon);
+      requireFiniteOffset('extrude', at);
       return wrap(placed(Manifold.extrude([polygon], height), at));
     },
 

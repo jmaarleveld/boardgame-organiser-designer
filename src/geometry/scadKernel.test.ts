@@ -62,3 +62,12 @@ describe('scad kernel primitives', () => {
     }
   });
 });
+
+describe('scad kernel argument guard', () => {
+  it('rejects the same bad sizes as the manifold kernel', () => {
+    expect(() => k.box(1, -2, 3)).toThrow('Invalid box(width=1, depth=-2, height=3): depth must be a finite number > 0');
+    expect(() => k.cylinder(0, 1)).toThrow(/Invalid cylinder\(radius=0, height=1\)/);
+    expect(() => k.extrude([[0, 0], [1, 0], [0, 1]], NaN)).toThrow(/Invalid extrude\(height=NaN\)/);
+    expect(() => k.box(1, 1, 1, [0, 0, Infinity])).toThrow(/box position/);
+  });
+});

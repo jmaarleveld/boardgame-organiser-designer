@@ -117,3 +117,28 @@ describe('geometry kernel', () => {
     expect(() => k.volume(b)).toThrow(/disposed/);
   });
 });
+
+describe('primitive argument guard', () => {
+  it('rejects non-positive and non-finite sizes with a message naming the primitive and values', () => {
+    expect(() => k.box(10, 20, -3)).toThrow('Invalid box(width=10, depth=20, height=-3): height must be a finite number > 0');
+    expect(() => k.box(0, 0, 5)).toThrow(/box\(width=0, depth=0, height=5\): width, depth must/);
+    expect(() => k.box(NaN, 1, 1)).toThrow(/width=NaN/);
+    expect(() => k.box(1, Infinity, 1)).toThrow(/depth=Infinity/);
+    expect(() => k.cylinder(0, 5)).toThrow(/Invalid cylinder\(radius=0, height=5\): radius must/);
+    expect(() => k.cylinder(2, -1)).toThrow(/cylinder.*height must/);
+    expect(() => k.cylinder(2, 1, undefined, 2)).toThrow(/segments=2/);
+    expect(() => k.extrude([[0, 0], [1, 0], [0, 1]], 0)).toThrow(/Invalid extrude\(height=0\)/);
+    expect(() => k.extrude([[0, 0], [1, 0]], 1)).toThrow(/at least 3 points/);
+    expect(() => k.extrude([[0, 0], [Infinity, 0], [0, 1]], 1)).toThrow(/\[Infinity, 0\] is not finite/);
+  });
+
+  it('rejects a non-finite position', () => {
+    expect(() => k.box(1, 1, 1, [0, NaN, 0])).toThrow(/Invalid box position \[0, NaN, 0\]/);
+    expect(() => k.cylinder(1, 1, [Infinity, 0, 0])).toThrow(/cylinder position/);
+  });
+
+  it('accepts tiny positive sizes', () => {
+    expect(k.volume(k.box(0.001, 1, 1))).toBeCloseTo(0.001, 9);
+    expect(k.isValid(k.cylinder(0.01, 0.01))).toBe(true);
+  });
+});
