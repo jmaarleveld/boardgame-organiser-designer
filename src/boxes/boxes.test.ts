@@ -40,6 +40,8 @@ describe('registry', () => {
     expect(listBoxTypes().map((d) => d.id).sort()).toEqual([
       'card-tray',
       'card-tray-flat',
+      'card-tray-tilted',
+      'card-tray-upright',
       'divided-tray',
       'item-tray',
       'platform',

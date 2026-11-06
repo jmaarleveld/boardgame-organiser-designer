@@ -40,6 +40,7 @@ function geom(item: ResolvedItem) {
     height: cards.stackHeight,
     gapWidth: num(item, 'gapWidth', 25),
     gapFloorDepth: num(item, 'gapFloorDepth', 2),
+    gapReach: num(item, 'gapReach', 10),
     gapSides: str<GapSides>(item, 'gapSides', GAP_SIDES, 'sides'),
   };
 }
@@ -86,28 +87,67 @@ function gapRect(f: CellFrame, side: Side, width: number) {
   }
 }
 
+/** Reach of the floor groove into the cell on `side`, clamped to the cell's inner span. */
+function reachOf(f: CellFrame, side: Side, reach: number): number {
+  return Math.max(0, Math.min(reach, side === 'left' || side === 'right' ? f.width : f.depth));
+}
+
+/**
+ * XY rects of the floor groove inside the cavities next to the gap on `side`:
+ * the own cell always, plus the neighbouring cell on a shared divider (right /
+ * back sides; the neighbour's left / front sides are never cut themselves).
+ */
+function grooveRects(f: CellFrame, side: Side, width: number, reach: number) {
+  const r = reachOf(f, side, reach);
+  if (r <= 0) return [];
+  const t = f.sides[side];
+  const cx = f.x + f.width / 2;
+  const cy = f.y + f.depth / 2;
+  const shared = !f.outer[side] && (side === 'right' || side === 'back');
+  switch (side) {
+    case 'left':
+      return [{ x: f.x, y: cy - width / 2, w: r, h: width }];
+    case 'right': {
+      const out = [{ x: f.x + f.width - r, y: cy - width / 2, w: r, h: width }];
+      if (shared) out.push({ x: f.x + f.width + t, y: cy - width / 2, w: r, h: width });
+      return out;
+    }
+    case 'front':
+      return [{ x: cx - width / 2, y: f.y, w: width, h: r }];
+    case 'back': {
+      const out = [{ x: cx - width / 2, y: f.y + f.depth - r, w: width, h: r }];
+      if (shared) out.push({ x: cx - width / 2, y: f.y + f.depth + t, w: width, h: r });
+      return out;
+    }
+  }
+}
+
 /**
  * Finger gap cutter: a plain rectangular slot through the wall thickness,
  * from above the wall top (and lip) down to `floorDepth` below the cavity
- * floor, so it continues into the floor as a groove of the same width under
- * the wall. Deeper than the floor it simply goes through. It overshoots by
- * EPS only through an outer face; towards a cavity (and on both faces of a
- * divider) it stops flush, so the groove does not nick the cavity floor.
+ * floor, so it continues into the floor as a groove of the same width. The
+ * groove runs under the wall and `reach` mm into the cavity (both cavities on
+ * a shared divider, each clamped to the cell span), so a fingertip gets under
+ * the edge of the last card. Deeper than the floor it simply goes through. It
+ * overshoots by EPS only through an outer face.
  */
-function gapCutter(kernel: GeometryKernel, f: CellFrame, side: Side, width: number, floorDepth: number): Solid {
+function gapCutter(kernel: GeometryKernel, f: CellFrame, side: Side, width: number, floorDepth: number, reach: number): Solid {
   const r = gapRect(f, side, width);
   const z0 = f.floorZ - Math.max(0, floorDepth);
   const h = f.topZ + f.lipH + EPS - z0;
   const out = f.outer[side] ? EPS : 0;
+  const rc = reachOf(f, side, reach);
+  const shared = !f.outer[side] && (side === 'right' || side === 'back');
+  const far = shared ? rc : 0;
   switch (side) {
     case 'left':
-      return kernel.box(r.w + out, r.h, h, [r.x - out, r.y, z0]);
+      return kernel.box(r.w + out + rc, r.h, h, [r.x - out, r.y, z0]);
     case 'right':
-      return kernel.box(r.w + out, r.h, h, [r.x, r.y, z0]);
+      return kernel.box(rc + r.w + out + far, r.h, h, [r.x - rc, r.y, z0]);
     case 'front':
-      return kernel.box(r.w, r.h + out, h, [r.x, r.y - out, z0]);
+      return kernel.box(r.w, r.h + out + rc, h, [r.x, r.y - out, z0]);
     case 'back':
-      return kernel.box(r.w, r.h + out, h, [r.x, r.y, z0]);
+      return kernel.box(r.w, rc + r.h + out + far, h, [r.x, r.y - rc, z0]);
   }
 }
 
@@ -126,13 +166,16 @@ function spec(item: ResolvedItem): TiledBoxSpec {
     stacking: stacking(item),
     cellCutters(kernel, f) {
       const out: Solid[] = [kernel.box(f.width, f.depth, f.height + f.lipH + EPS, [f.x, f.y, f.floorZ])];
-      if (hasGaps) for (const side of gapSidesOf(f, g.gapSides)) out.push(gapCutter(kernel, f, side, g.gapWidth, g.gapFloorDepth));
+      if (hasGaps) for (const side of gapSidesOf(f, g.gapSides)) out.push(gapCutter(kernel, f, side, g.gapWidth, g.gapFloorDepth, g.gapReach));
       return out;
     },
     cellDraw(f) {
       const out: TopViewFeature[] = [{ kind: 'rect', role: 'cavity', x: f.x, y: f.y, w: f.width, h: f.depth }];
       if (hasGaps) {
-        for (const side of gapSidesOf(f, g.gapSides)) out.push({ kind: 'rect', role: 'notch', ...gapRect(f, side, g.gapWidth) });
+        for (const side of gapSidesOf(f, g.gapSides)) {
+          out.push({ kind: 'rect', role: 'notch', ...gapRect(f, side, g.gapWidth) });
+          for (const gr of grooveRects(f, side, g.gapWidth, g.gapReach)) out.push({ kind: 'rect', role: 'notch', ...gr });
+        }
       }
       return out;
     },
@@ -169,6 +212,17 @@ export const cardTrayFlat: BoxTypeDefinition = {
       help: 'How far the gap continues into the floor (under the wall) so a finger gets under the last card. Deeper than the floor cuts through it.',
     },
     {
+      key: 'gapReach',
+      label: 'Gap reach into floor',
+      kind: 'number',
+      default: 10,
+      min: 0,
+      step: 0.5,
+      unit: 'mm',
+      group: 'Finger gaps',
+      help: 'How far the floor groove continues under the cards, from the wall into the cavity.',
+    },
+    {
       key: 'gapSides',
       label: 'Gap walls',
       kind: 'select',
@@ -194,6 +248,7 @@ export const cardTrayFlat: BoxTypeDefinition = {
     validateCards(problems, g.cards);
     if (g.gapWidth < 0) problems.push(`Gap width must not be negative (is ${g.gapWidth}).`);
     if (g.gapFloorDepth < 0) problems.push(`Groove depth must not be negative (is ${g.gapFloorDepth}).`);
+    if (g.gapReach < 0) problems.push(`Gap reach must not be negative (is ${g.gapReach}).`);
     if (g.gapWidth > 0) {
       if (g.gapSides !== 'ends' && g.gapWidth >= g.depth) {
         problems.push(`Gap width (${g.gapWidth} mm) must be smaller than the side wall it is cut from (${round(g.depth)} mm).`);

@@ -125,7 +125,12 @@ describe('card-tray-flat', () => {
         expect(rects(cardTrayFlat, it, 'cavity')).toHaveLength(columns);
         // One gap per wall / divider parallel to Y (columns + 1), two per cell in the ends.
         const expected = (gapSides !== 'ends' ? columns + 1 : 0) + (gapSides !== 'sides' ? 2 * columns : 0);
-        expect(rects(cardTrayFlat, it, 'notch')).toHaveLength(expected);
+        // Wall rects only (reach 0); the groove rects in the cavities come on top.
+        const noReach = item(cardTrayFlat, { columns, gapSides, gapReach: 0 });
+        expect(rects(cardTrayFlat, noReach, 'notch')).toHaveLength(expected);
+        // Each gap has a groove rect per adjacent cavity: one for outer walls, two for shared dividers.
+        const grooves = (gapSides !== 'ends' ? 2 + 2 * (columns - 1) : 0) + (gapSides !== 'sides' ? 2 * columns : 0);
+        expect(rects(cardTrayFlat, it, 'notch')).toHaveLength(expected + grooves);
         expect(cardTrayFlat.validate!(it)).toEqual([]);
       }
     }
@@ -136,7 +141,33 @@ describe('card-tray-flat', () => {
     const gapped = k.volume(cardTrayFlat.build(item(cardTrayFlat), k));
     // Two outer side walls, each 25 wide × wall thick × (30 + 2 groove).
     // The default 2 mm groove is deeper than the 1.2 mm floor: it goes through.
-    expect(plain - gapped).toBeCloseTo(2 * 25 * WALL * (30 + FLOOR), 2);
+    // Reach 0: the groove spans only the wall thickness.
+    const noReach = k.volume(cardTrayFlat.build(item(cardTrayFlat, { gapReach: 0 }), k));
+    expect(plain - noReach).toBeCloseTo(2 * 25 * WALL * (30 + FLOOR), 2);
+    // Default reach 10: the groove also continues 10 mm into the cavity (floor only, 1.2 mm thick).
+    expect(plain - gapped).toBeCloseTo(2 * 25 * WALL * (30 + FLOOR) + 2 * 25 * 10 * FLOOR, 2);
+  });
+
+  it('the floor groove reaches gapReach into the cavity, no further', () => {
+    const fp = 5;
+    const reach = 6;
+    const s = cardTrayFlat.build(item(cardTrayFlat, { gapFloorDepth: 0.5, gapReach: reach }), k);
+    const y0 = WALL + cd / 2 - 12;
+    const top = (x: number) => {
+      const b = k.bounds(k.intersection([s, k.box(1, 24, FLOOR + 1, [x, y0, 0])]));
+      return b.max[2];
+    };
+    // Just inside the cavity next to the left wall gap: floor lowered by the groove depth.
+    expect(top(WALL + 0.5)).toBeCloseTo(FLOOR - 0.5, 6);
+    expect(top(WALL + reach - 1.5)).toBeCloseTo(FLOOR - 0.5, 6);
+    // Beyond the reach: full floor.
+    expect(top(WALL + reach + 0.5)).toBeCloseTo(FLOOR, 6);
+    expect(top(WALL + fp + 20)).toBeCloseTo(FLOOR, 6);
+    // Reach is clamped to the cell: huge reach never cuts past the far wall.
+    const big = cardTrayFlat.build(item(cardTrayFlat, { gapFloorDepth: 0.5, gapReach: 500 }), k);
+    expect(k.isValid(big)).toBe(true);
+    const farWall = k.intersection([big, k.box(WALL, 24, 30, [WALL + cw + 0.01, y0, FLOOR + 1])]);
+    expect(k.volume(farWall)).toBeLessThan(1e-6); // gap there is the wall's own, wall remains below
   });
 
   it('the gap groove reaches below the floor top', () => {
@@ -156,12 +187,14 @@ describe('card-tray-flat', () => {
   it('gaps cut the shared dividers once', () => {
     const it = item(cardTrayFlat, { columns: 2 });
     const notches = rects(cardTrayFlat, it, 'notch');
-    expect(notches).toHaveLength(3);
+    expect(notches).toHaveLength(3 + 4); // 3 wall rects + 4 groove rects (one per adjacent cavity)
     const div = notches.find((n) => n.kind === 'rect' && Math.abs(n.x - (WALL + cw)) < 1e-9);
     expect(div).toMatchObject({ w: expect.closeTo(1.2, 9), h: 25 });
     const plain = k.volume(cardTrayFlat.build(item(cardTrayFlat, { columns: 2, gapWidth: 0 }), k));
     const gapped = k.volume(cardTrayFlat.build(it, k));
-    expect(plain - gapped).toBeCloseTo(25 * (2 * WALL + 1.2) * (30 + FLOOR), 2);
+    // Walls and divider through the full height, plus 10 mm of 1.2 mm floor groove into each cavity per gap:
+    // outer left (1 cavity), divider (2 cavities), outer right (1 cavity).
+    expect(plain - gapped).toBeCloseTo(25 * (2 * WALL + 1.2) * (30 + FLOOR) + 25 * 10 * FLOOR * 4, 2);
   });
 
   it('stacking variants build and validate', () => {
@@ -178,6 +211,7 @@ describe('card-tray-flat', () => {
   it('validates bad params', () => {
     expect(cardTrayFlat.validate!(item(cardTrayFlat, { gapWidth: 95 })).join()).toMatch(/Gap width \(95 mm\) must be smaller than the side wall/);
     expect(cardTrayFlat.validate!(item(cardTrayFlat, { gapSides: 'ends', gapWidth: 70 })).join()).toMatch(/end wall/);
+    expect(cardTrayFlat.validate!(item(cardTrayFlat, { gapReach: -1 })).join()).toMatch(/Gap reach/);
     expect(cardTrayFlat.validate!(item(cardTrayFlat, { columns: 0 })).join()).toMatch(/Columns/);
     expect(cardTrayFlat.validate!(item(cardTrayFlat, { cardWidth: -1 })).join()).toMatch(/Card width/);
     expect(cardTrayFlat.validate!(item(cardTrayFlat, { clearance: -1 })).join()).toMatch(/Clearance/);
