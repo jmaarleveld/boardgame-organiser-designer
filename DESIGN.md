@@ -163,11 +163,21 @@ a plate with optional corner stops (engagement = `stopHeight`).
 
 | id             | Purpose                                     | Key params |
 |----------------|---------------------------------------------|------------|
-| `tray`         | Plain open‑top tray                         | innerWidth/Depth/Height, fingerNotch, notchWidth, notchDepth, notchSides (`long`/`short`/`both`) |
-| `divided-tray` | Tray with an N×M grid of compartments       | innerWidth/Depth/Height, columns, rows, dividerThickness, dividerHeight |
-| `card-tray`    | Holder for a card stack                     | cardWidth, cardHeight, clearance, stackHeight, orientation (`flat`/`upright`), exposedHeight (upright), notchWidth |
+| `tray`         | Plain open‑top tray (v1, kept for saved projects) | innerWidth/Depth/Height, fingerNotch, notchWidth, notchDepth, notchSides (`long`/`short`/`both`) |
+| `divided-tray` | Tray with an N×M grid of compartments (v1, kept for saved projects) | innerWidth/Depth/Height, columns, rows, dividerThickness, dividerHeight |
+| `card-tray`    | Holder for a card stack (v1, kept for saved projects) | cardWidth, cardHeight, clearance, stackHeight, orientation (`flat`/`upright`), exposedHeight (upright), notchWidth |
+| `item-tray`    | Token tray, N×M cells, flat or scoop floor  | innerWidth/Depth/Height (one cell), columns, rows, dividerThickness, dividerHeight, floorShape (`flat`/`scoop`), scoopSides (`long`/`short`), scoopRadius |
+| `card-tray-flat` | Card stacks lying flat, finger gaps to the floor, repeats along X | cardParams, columns, dividerThickness, gapWidth, gapFloorDepth, gapReach, gapSides (`sides`/`ends`/`both`) |
+| `card-tray-upright` | Card stacks standing, wedges in the long walls, repeats along X | cardParams, exposedHeight, columns, dividerThickness, dividerHeight, wedgeTopWidth, wedgeBottomWidth, wedgeDepth |
+| `card-tray-tilted` | Card dispenser: stacks leaning back, open front, repeats along Y | cardParams, tiltAngle, exposedHeight, frontHeight, rows, dividerThickness, dividerHeight |
 | `spacer`       | Solid filler block to take up slack         | width, depth, height |
 | `platform`     | Plate bridging trays to carry the next level | width, depth, thickness, cornerStops, stopSize, stopHeight, stopInset, locateItems |
+
+`cardParams` (`common.ts`, group "Cards") = cardWidth, cardHeight, clearance,
+stackHeight. The four v2 types are built on the tiling framework (§4.4); the
+tilted tray is the first **chiral** type (its mirror image is a different
+part), which makes the open question about the mirrored assembly view in
+`docs-box-design-ideas.md` ("Decisions so far") live.
 
 Finger notches are rounded slots (a box plus a cylinder at the bottom of the
 cut) subtracted from the wall, centred on the wall, `notchWidth` wide and
@@ -278,6 +288,73 @@ sunk into another, was dropped: gravity cannot produce it). Tests check that
 its stored `z` values are exactly what `settle` gives and that each item's
 label suffix — `(OK)`, `(warning)`, `(error)`, `(flagged with X)` — matches the
 summary of the settled layout.
+
+### 4.4 Cell tiling framework (`src/boxes/definitions/tiling.ts`)
+
+A box type describes **one cell** (a cavity plus its access features) and the
+framework repeats it `cols` times along X and `rows` times along Y inside one
+printed part with shared inner walls. Box types never loop over cells.
+
+* `CellSpec` — `width`, `depth`, `height` (inner size of one cell, axis aligned
+  bounding box) and optional `pitchX` / `pitchY` (distance between cell
+  origins; default size + `divider`).
+* `CellFrame` — what the framework hands the cell functions: `col`, `row`,
+  `x`, `y` (inner origin in the outer frame), the cell size, `floorZ` (plug +
+  floor), `topZ` (wall top), `lipH` (stacking lip on the outer walls, 0 if
+  none), `dividerTopZ` (`topZ`, or `floorZ + dividerHeight` when dividers are
+  lowered), `sides` (thickness of the material on each side: `wall` for an
+  outer wall, the gap to the neighbour for a divider) and `outer` (which sides
+  are outer walls). A cutter spanning `[x − sides.left − EPS, x + EPS]` cuts
+  exactly through the left wall or divider.
+* `TiledBoxSpec` — `cols`, `rows`, `cell`, `wall`, `floor`, `divider`,
+  `stacking`, plus the callbacks `cellCutters(kernel, frame)` (solids to
+  subtract: the cavity, which must reach through the lip, and access
+  features), `cellDraw(frame)` (mini‑map features), optional
+  `cellBearing(frame)`, optional `dividerHeight` (lowered when 0 < h < cell
+  height) and `straightDividers` (default true; false when dividers are not
+  straight vertical walls: the framework then neither draws, reports nor
+  lowers them).
+
+Outer size: W = 2·wall + (cols − 1)·pitchX + cell.width, D likewise, H =
+`stackedHeight(cell.height, floor, stacking)`. Cell (col, row) has its inner
+origin at `(wall + col·pitchX, wall + row·pitchY, plug + floor)`.
+
+**Framework functions.** `tiledLayout` derives the numbers above (counts
+rounded to whole numbers ≥ 1); `tiledFootprint`; `cellFrames` (row‑major, row
+0 = front, col 0 = left); `dividerRects` (one per column boundary spanning the
+inner depth, one per row boundary spanning the inner width, role `divider`);
+`tiledBuild` = `stackedBlock` (outer box + lip ring + plug pad − recess ring,
+no cavity; `stackedOpenBox` is `stackedBlock` minus one cavity, so the v1
+types are unchanged) minus the strips above lowered dividers minus every
+cell's cutters, in one boolean; `tiledDraw` (cavities, then dividers, then
+notches); `tiledBearingAreas` (outer ring via `cavityBearingAreas`, dividers
+as `bearing` or `low`, plus cell areas); `tiledBaseFeatures`;
+`tiledValidate` (whole counts ≥ 1, wall / floor > 0, divider thickness > 0
+when more than one cell, pitch ≥ cell size, divider height range,
+`validateStacking`); `tilingParams(axes)` (group "Repeat": `columns` and / or
+`rows` for `'x'` / `'y'` / `'xy'`, plus `dividerThickness`, default 1 / 1 /
+1.2 mm); `dividerHeightParam`; `tilingOf(item, axes)` (raw counts as given:
+the framework rounds, `tiledValidate` reports).
+
+**Conventions.** Dividers never carry the stacking lip (it is the outer half of
+the outer wall only), so a recessed base above rests on the inner wall half
+and on full‑height dividers. A feature in a shared divider is cut by one cell
+only: a cell cuts its left / front side only when that side is outer, its
+right / back side always. Shared dividers are `divider` thick, not `wall`.
+
+**Per type.** `item-tray` (X and Y): optional concave scoop fillets in two
+opposite walls of each cell. `card-tray-flat` (X): rectangular finger gaps
+through the walls that continue `gapFloorDepth` into the floor and `gapReach`
+(default 10 mm) into the cavity under the cards. `card-tray-upright` (X):
+trapezoid wedges in the two outer long walls (cell X = stackHeight + c, Z =
+cardHeight − exposedHeight); `keepOut` for the standing cards. `card-tray-tilted`
+(Y): cell width = H·tan θ + T/cos θ with H = (cardHeight − exposedHeight)·cos θ;
+the tilted slot may notch the back lip on steep tilts; the front opening above
+`frontHeight` is removed; its bearing areas wrap the framework's (front opening
+removed, a `low` shelf at `frontHeight`); `keepOut` height is exposed·cos θ +
+stackHeight·sin θ − lipH and may start at negative local x (cards overhang the
+back; `keepOutViolations` checks that, `itemsOutsideUsable` ignores keep‑outs).
+See `docs-containers.md`.
 
 ## 5. Geometry kernel (`src/geometry/kernel.ts`)
 

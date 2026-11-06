@@ -3,17 +3,18 @@
 Working notes for the standard organizer set. The v1 set (tray, divided tray,
 card tray, spacer, platform) is a starting point; this file collects proposed
 additions and the questions whose answers change the designs.
-Last updated 2026-11-03.
+Last updated 2026-11-06.
 
 ## Proposed additions and changes
 
 - **Lid for a tray.** A cap that drops over a tray's outer wall, with lip height
   and clearance as parameters. Keeps tokens in place when the game box is stored
   vertically. Separate printed item, so a box type rather than a parameter.
-- **Token tray with a scoop floor.** Floor curves up along one long wall so small
+- **Token tray with a scoop floor** (done 2026-11-06, `item-tray` with
+  `floorShape: scoop`). Floor curves up along one long wall so small
   tokens slide to one side and are easy to pick up. Better than a finger notch
   for coins and cubes.
-- **Card well with a tilt.** For upright cards: floor sloped 10 to 15 degrees so
+- **Card well with a tilt** (done 2026-11-06, `card-tray-tilted`). For upright cards: floor sloped 10 to 15 degrees so
   the stack leans against the back wall and fans slightly. Standard in commercial
   inserts. Chiral, which matters for the mirrored assembly view (see DESIGN.md).
 - **Dividers for the card tray.** Removable tabbed divider cards sized to the
@@ -79,3 +80,11 @@ Last updated 2026-11-03.
   (decided 2026-11-03).
 - Platforms get locating ridges on top, on by default (a checkbox can turn them
   off), derived from the recessed items resting on them (decided 2026-11-03).
+- **Containers v2** (decided and built 2026-11-06, commits eaafa38, 4fedc48):
+  one cell per box type plus a tiling framework (`tiling.ts`) that repeats the
+  cell in columns and/or rows with shared dividers. Four types: `item-tray`,
+  `card-tray-flat`, `card-tray-upright`, `card-tray-tilted`. The v1 `tray`,
+  `divided-tray` and `card-tray` stay registered for saved projects; retiring
+  them from the palette is open. The tilted tray is the first chiral type, so
+  the mirrored assembly view question above is now live. Details in
+  `docs-containers.md`.

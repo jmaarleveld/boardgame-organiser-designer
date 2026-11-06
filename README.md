@@ -155,6 +155,17 @@ derived from the height of the cavity (half of it, at least 8 mm).
 | `exposedHeight` | 20 | Upright only: how far the cards stick out above the walls |
 | `notchWidth` | 25 | Finger notch width; 0 means no notches |
 
+### Containers v2 (cell-based)
+
+Four newer types, each defined as one cell that repeats inside one printed part
+with shared dividers (see `docs-containers.md`). The three trays above stay for
+saved projects.
+
+* **Item tray** (`item-tray`): grid of equal cells for tokens, columns x rows, flat or scoop floor.
+* **Card tray, flat** (`card-tray-flat`): card stacks lying face up in columns, finger gaps down into the floor.
+* **Card tray, upright** (`card-tray-upright`): standing card stacks in columns, wedges in the long walls.
+* **Card tray, tilted** (`card-tray-tilted`): card dispenser, stacks leaning back with an open front, lanes in rows.
+
 ### Spacer (`spacer`)
 
 Solid filler block to take up leftover space. Wall and floor settings are ignored.
