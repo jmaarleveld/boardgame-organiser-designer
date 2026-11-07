@@ -11,6 +11,12 @@ import type { Rect } from '../model/layout';
 import { carriedItemIds, elevationOf, rectInside, rectsOverlap, safeItemRect, settle, stackedAboveIds, usableArea } from '../model/layout';
 
 export const HISTORY_LIMIT = 100;
+/**
+ * Consecutive changes to the same field (same coalescing key) made within this
+ * many milliseconds merge into one undo step, so typing "120" into a number
+ * field or dragging a spinner is undone in one go instead of per keystroke.
+ */
+export const COALESCE_MS = 1000;
 
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] };
 
@@ -26,6 +32,12 @@ export interface AppState {
   future: Project[];
   /** Snapshot taken by beginDrag; non-null while a drag is in progress. */
   dragBase: Project | null;
+  /**
+   * Coalescing key and time of the last recorded change; a change with the
+   * same key within COALESCE_MS joins that undo step instead of adding one.
+   * Reset by undo/redo, drags and every change without a key.
+   */
+  lastCommit: { key: string; at: number } | null;
 
   setKernelReady(ready: boolean): void;
   setKernelError(error: string | null): void;
@@ -160,9 +172,13 @@ function labelBase(name: string): string {
 }
 
 export const useStore = create<AppState>()((set, get) => {
-  /** Apply a change to the project, recording an undo snapshot. */
-  const commit = (fn: (p: Project) => Project) => {
-    const { project, past, dragBase } = get();
+  /**
+   * Apply a change to the project, recording an undo snapshot. With a
+   * `coalesceKey`, a change that follows one with the same key within
+   * COALESCE_MS extends that undo step (the snapshot is kept, no new one).
+   */
+  const commit = (fn: (p: Project) => Project, coalesceKey?: string) => {
+    const { project, past, dragBase, lastCommit } = get();
     const next = fn(project);
     if (next === project) return;
     if (dragBase) {
@@ -170,12 +186,17 @@ export const useStore = create<AppState>()((set, get) => {
       set({ project: next });
       return;
     }
+    const now = Date.now();
+    if (coalesceKey && lastCommit && lastCommit.key === coalesceKey && now - lastCommit.at <= COALESCE_MS && past.length) {
+      set({ project: next, future: [], lastCommit: { key: coalesceKey, at: now } });
+      return;
+    }
     const nextPast = [...past, project];
     if (nextPast.length > HISTORY_LIMIT) nextPast.splice(0, nextPast.length - HISTORY_LIMIT);
-    set({ project: next, past: nextPast, future: [] });
+    set({ project: next, past: nextPast, future: [], lastCommit: coalesceKey ? { key: coalesceKey, at: now } : null });
   };
 
-  const mapItem = (id: string, fn: (i: PlacedItem) => PlacedItem) =>
+  const mapItem = (id: string, fn: (i: PlacedItem) => PlacedItem, coalesceKey?: string) =>
     commit((p) => {
       const idx = p.items.findIndex((i) => i.id === id);
       if (idx < 0) return p;
@@ -184,7 +205,7 @@ export const useStore = create<AppState>()((set, get) => {
       const items = p.items.slice();
       items[idx] = updated;
       return withItems(p, items);
-    });
+    }, coalesceKey);
 
   return {
     project: createEmptyProject(),
@@ -194,6 +215,7 @@ export const useStore = create<AppState>()((set, get) => {
     past: [],
     future: [],
     dragBase: null,
+    lastCommit: null,
 
     setKernelReady: (ready) => set({ kernelReady: ready, ...(ready ? { kernelError: null } : {}) }),
     setKernelError: (error) => set({ kernelError: error, ...(error ? { kernelReady: false } : {}) }),
@@ -209,7 +231,7 @@ export const useStore = create<AppState>()((set, get) => {
           defaults: { ...s.defaults, ...stripUndefined(partial.defaults) },
         };
         return settled({ ...p, settings });
-      }),
+      }, `settings:${settingsPaths(partial).join(',')}`),
 
     setBoxSize: (size) => get().setSettings({ box: size }),
 
@@ -251,16 +273,20 @@ export const useStore = create<AppState>()((set, get) => {
     },
 
     updateItem: (id, patch) =>
-      mapItem(id, (i) => {
-        const next = { ...i, ...patch, id: i.id };
-        // Allow clearing overrides by passing undefined explicitly.
-        if ('wall' in patch && patch.wall === undefined) delete next.wall;
-        if ('floor' in patch && patch.floor === undefined) delete next.floor;
-        return next;
-      }),
+      mapItem(
+        id,
+        (i) => {
+          const next = { ...i, ...patch, id: i.id };
+          // Allow clearing overrides by passing undefined explicitly.
+          if ('wall' in patch && patch.wall === undefined) delete next.wall;
+          if ('floor' in patch && patch.floor === undefined) delete next.floor;
+          return next;
+        },
+        `item:${id}:${Object.keys(patch).sort().join(',')}`,
+      ),
 
     setParam: (id, key, value) =>
-      mapItem(id, (i) => (i.params[key] === value ? i : { ...i, params: { ...i.params, [key]: value } })),
+      mapItem(id, (i) => (i.params[key] === value ? i : { ...i, params: { ...i.params, [key]: value } }), `param:${id}:${key}`),
 
     moveItem: (id, x, y) => {
       const item = get().project.items.find((i) => i.id === id);
@@ -412,7 +438,7 @@ export const useStore = create<AppState>()((set, get) => {
       }
       const nextPast = [...past, dragBase];
       if (nextPast.length > HISTORY_LIMIT) nextPast.splice(0, nextPast.length - HISTORY_LIMIT);
-      set({ dragBase: null, past: nextPast, future: [] });
+      set({ dragBase: null, past: nextPast, future: [], lastCommit: null });
     },
 
     undo: () => {
@@ -424,6 +450,7 @@ export const useStore = create<AppState>()((set, get) => {
         project: prev,
         past: past.slice(0, -1),
         future: [project, ...future],
+        lastCommit: null,
         selectedId: selectedId && prev.items.some((i) => i.id === selectedId) ? selectedId : null,
       });
     },
@@ -436,11 +463,24 @@ export const useStore = create<AppState>()((set, get) => {
         project: next,
         past: [...past, project].slice(-HISTORY_LIMIT),
         future: future.slice(1),
+        lastCommit: null,
         selectedId: selectedId && next.items.some((i) => i.id === selectedId) ? selectedId : null,
       });
     },
   };
 });
+
+/** Dotted paths of the defined leaves of a settings patch, sorted: `box.width`, `name`, … */
+function settingsPaths(partial: DeepPartial<ProjectSettings>): string[] {
+  const out: string[] = [];
+  for (const [k, v] of Object.entries(partial)) {
+    if (v === undefined) continue;
+    if (v && typeof v === 'object') {
+      for (const [k2, v2] of Object.entries(v)) if (v2 !== undefined) out.push(`${k}.${k2}`);
+    } else out.push(k);
+  }
+  return out.sort();
+}
 
 function stripUndefined<T extends object>(o: T | undefined): Partial<T> {
   const out: Partial<T> = {};

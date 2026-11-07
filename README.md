@@ -98,7 +98,7 @@ Keyboard (when focus is not in a text field):
 | `Delete` / `Backspace` | Remove the selected item |
 | `Ctrl+D` / `Cmd+D` | Duplicate the selected item |
 | `Ctrl+Shift+D` / `Cmd+Shift+D` | Duplicate the selected item on top of itself (see Stacking) |
-| `Ctrl+Z` / `Cmd+Z` | Undo |
+| `Ctrl+Z` / `Cmd+Z` | Undo (also while a field has focus; the toolbar has Undo/Redo buttons too) |
 | `Ctrl+Y` or `Ctrl+Shift+Z` | Redo |
 | Arrow keys | Nudge the selected item by one grid step, following the screen (`↑` = +y) |
 | `Shift` + arrow keys | Nudge by ten grid steps |

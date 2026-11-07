@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { clearRegistry, registerBoxType } from '../boxes/registry';
 import { createEmptyProject } from '../model/types';
 import { findOverlaps, unsupportedItems, usableArea } from '../model/layout';
@@ -10,7 +10,7 @@ import { cardTrayTilted } from '../boxes/definitions/card-tray-tilted';
 import { spacer } from '../boxes/definitions/spacer';
 import { platform } from '../boxes/definitions/platform';
 import { defaultParams } from '../boxes/types';
-import { HISTORY_LIMIT, migrateStackOrder, useStore } from './store';
+import { COALESCE_MS, HISTORY_LIMIT, migrateStackOrder, useStore } from './store';
 import { registerAllBoxTypes } from '../boxes/index';
 import { createPersistence } from '../services/persistence';
 import { readFileSync } from 'node:fs';
@@ -21,7 +21,7 @@ const items = () => st().project.items;
 beforeEach(() => {
   clearRegistry();
   registerBoxType(fakeBox);
-  useStore.setState({ project: createEmptyProject(), past: [], future: [], selectedId: null, dragBase: null });
+  useStore.setState({ project: createEmptyProject(), past: [], future: [], selectedId: null, dragBase: null, lastCommit: null });
 });
 
 describe('store', () => {
@@ -121,6 +121,64 @@ describe('store', () => {
     st().setBoxSize({ height: 33 });
     expect(st().project.settings.box.height).toBe(33);
     expect(st().project.settings.box.width).toBe(290);
+  });
+
+  describe('coalescing field edits', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('rapid edits of the same param are one undo step', () => {
+      const id = st().addItem('fake');
+      const pastLen = st().past.length;
+      st().setParam(id, 'w', 5);
+      st().setParam(id, 'w', 50);
+      st().setParam(id, 'w', 55);
+      expect(st().past.length).toBe(pastLen + 1);
+      st().undo();
+      expect(items()[0].params.w).toBe(40);
+      st().redo();
+      expect(items()[0].params.w).toBe(55);
+    });
+
+    it('edits of different fields, or of the same field on different items, are separate steps', () => {
+      const a = st().addItem('fake');
+      const b = st().addItem('fake');
+      const pastLen = st().past.length;
+      st().setParam(a, 'w', 50);
+      st().setParam(a, 'd', 50);
+      st().setParam(b, 'w', 50);
+      st().updateItem(a, { label: 'x' });
+      st().updateItem(a, { label: 'xy' });
+      st().setSettings({ box: { width: 300 } });
+      st().setSettings({ box: { width: 310 } });
+      st().setSettings({ box: { depth: 310 } });
+      expect(st().past.length).toBe(pastLen + 6);
+    });
+
+    it('a pause longer than COALESCE_MS starts a new step', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(1_000_000);
+      const id = st().addItem('fake');
+      const pastLen = st().past.length;
+      st().setParam(id, 'w', 50);
+      vi.setSystemTime(1_000_000 + COALESCE_MS + 1);
+      st().setParam(id, 'w', 55);
+      expect(st().past.length).toBe(pastLen + 2);
+    });
+
+    it('undo and other changes break a run', () => {
+      const id = st().addItem('fake');
+      st().setParam(id, 'w', 50);
+      st().undo();
+      st().setParam(id, 'w', 60); // after undo: a fresh step, not merged into the undone one
+      expect(items()[0].params.w).toBe(60);
+      st().undo();
+      expect(items()[0].params.w).toBe(40);
+      st().redo();
+      const pastLen = st().past.length;
+      st().rotateItem(id);
+      st().setParam(id, 'w', 70);
+      expect(st().past.length).toBe(pastLen + 2);
+    });
   });
 
   it('caps history', () => {

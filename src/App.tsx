@@ -109,21 +109,24 @@ export default function App({ services, onRetryKernel }: AppProps) {
   /* ---- keyboard shortcuts ---- */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (isTyping(e.target)) return;
       const s = useStore.getState();
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
-      if (mod && key === 'z') {
+      // Undo/redo also apply while a field has focus: every keystroke in a
+      // field is already committed to the project, so the browser's own text
+      // undo would re-commit the old text as a new change instead of undoing.
+      if (mod && !e.altKey && key === 'z') {
         e.preventDefault();
         if (e.shiftKey) s.redo();
         else s.undo();
         return;
       }
-      if (mod && key === 'y') {
+      if (mod && !e.altKey && !e.shiftKey && key === 'y') {
         e.preventDefault();
         s.redo();
         return;
       }
+      if (isTyping(e.target)) return;
       const sel = s.project.items.find((i) => i.id === s.selectedId);
       if (!sel) {
         if (e.key === 'Escape') s.select(null);
@@ -264,11 +267,11 @@ export default function App({ services, onRetryKernel }: AppProps) {
                 : 'Export all STL'}
           </button>
           <span className="sep" />
-          <button type="button" disabled={!canUndo} onClick={s.undo} title="Undo (Ctrl+Z)">
-            Undo
+          <button type="button" disabled={!canUndo} onClick={s.undo} title="Undo (Ctrl+Z)" aria-keyshortcuts="Control+Z">
+            ↶ Undo
           </button>
-          <button type="button" disabled={!canRedo} onClick={s.redo} title="Redo (Ctrl+Y)">
-            Redo
+          <button type="button" disabled={!canRedo} onClick={s.redo} title="Redo (Ctrl+Y or Ctrl+Shift+Z)" aria-keyshortcuts="Control+Y Control+Shift+Z">
+            ↷ Redo
           </button>
           {notice && (
             <span className={`notice ${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'}>

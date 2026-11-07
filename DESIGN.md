@@ -437,7 +437,11 @@ Three‑pane layout:
      step (Shift: 10×) following the screen — ArrowUp increases y (y‑up);
      `R` rotate, `Delete` remove,
      `Ctrl+D` duplicate, `Ctrl+Shift+D` duplicate on top (stacked),
-     `Ctrl+Z/Y` undo/redo, `Esc` deselect.
+     `Ctrl+Z/Y` undo/redo, `Esc` deselect. Undo/redo (also the toolbar
+     buttons) work with focus in a field as well, overriding the browser's
+     text undo: every keystroke in a field is committed to the project, and
+     consecutive edits of the same field within `COALESCE_MS` (1 s) form one
+     undo step (`commit(fn, coalesceKey)` in `src/state/store.ts`).
    Overlapping items, items outside the usable area and items taller than the
    box are tinted (§7) and listed in a validation panel.
    * **Reaching hidden items** (toolbar toggles next to the camera buttons):
