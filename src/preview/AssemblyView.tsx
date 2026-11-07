@@ -430,7 +430,6 @@ export default function AssemblyView({ className, editable = false }: AssemblyVi
           {failureBanner.more > 0 && <div className="assembly-failed-more">and {failureBanner.more} more</div>}
         </div>
       )}
-      {!items.length && <div className="preview3d-msg">The game box is empty. Add boxes from the palette.</div>}
       {editable && <MiniMap summary={summary} tints={tints} onFocus={(x, y) => api?.focusOn(x, y)} />}
       {editable && (
         <div className="editor-hint">
