@@ -18,13 +18,31 @@
       "params": { "columns": 3, "rows": 2, "floorShape": "flat" }
     },
     {
-      "id": "it-scoop",
+      "id": "it-cove",
       "type": "item-tray",
-      "label": "Item tray 2 x 1, scoop floor (long sides)",
+      "label": "Item tray 2 x 1, cove floor (all walls, radius 8)",
       "x": 132,
       "y": 1,
       "rotation": 0,
-      "params": { "columns": 2, "rows": 1, "floorShape": "scoop", "scoopSides": "long", "scoopRise": 3 }
+      "params": { "columns": 2, "rows": 1, "floorShape": "cove", "coveSides": "all", "coveRadius": 8 }
+    },
+    {
+      "id": "it-ramp",
+      "type": "item-tray",
+      "label": "Item tray 1 x 1, ramp up the front wall",
+      "x": 222,
+      "y": 1,
+      "rotation": 0,
+      "params": { "columns": 1, "rows": 1, "floorShape": "ramp", "rampWall": "front" }
+    },
+    {
+      "id": "it-ramp2",
+      "type": "item-tray",
+      "label": "Item tray 1 x 1, ramps up the left and right walls",
+      "x": 222,
+      "y": 37,
+      "rotation": 0,
+      "params": { "columns": 1, "rows": 1, "floorShape": "ramp", "rampWall": "left-right" }
     },
     {
       "id": "ct-flat",

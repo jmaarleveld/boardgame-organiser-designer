@@ -11,9 +11,13 @@ Last updated 2026-11-06.
   and clearance as parameters. Keeps tokens in place when the game box is stored
   vertically. Separate printed item, so a box type rather than a parameter.
 - **Token tray with a scoop floor** (done 2026-11-06, `item-tray` with
-  `floorShape: scoop`). Floor curves up along one long wall so small
-  tokens slide to one side and are easy to pick up. Better than a finger notch
-  for coins and cubes.
+  `floorShape: scoop`; replaced 2026-11-07 by `cove` and `ramp`). Floor curves
+  up along one long wall so small tokens slide to one side and are easy to pick
+  up. Better than a finger notch for coins and cubes. The shallow trough was
+  too timid in practice: it is now a **cove** (rounded floor-to-wall edge,
+  radius 8 mm by default, on all four walls or one pair, like the inside of a
+  spoon) or a **ramp** (one large curve up one wall or two opposite walls, to
+  sweep bits up and out). Old scoop trays load as a cove on the same walls.
 - **Card well with a tilt** (done 2026-11-06, `card-tray-tilted`). For upright cards: floor sloped 10 to 15 degrees so
   the stack leans against the back wall and fans slightly. Standard in commercial
   inserts. Chiral, which matters for the mirrored assembly view (see DESIGN.md).

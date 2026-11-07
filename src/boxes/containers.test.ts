@@ -56,23 +56,36 @@ describe('item-tray', () => {
     }
   });
 
-  // Trough per cell: span w across the scoop walls, rise h, radius R; the raised material beside the arc.
-  const segment = (w: number, h: number) => {
-    const R = (w * w / 4 + h * h) / (2 * h);
-    return { R, raised: w * h - (R * R * Math.acos((R - h) / R) - (R - h) * Math.sqrt(2 * R * h - h * h)) };
+  // Raised material per cell (the floor below the curve), analytic.
+  // Ramp of length L, height h at one wall: area under R − √(R² − (L − d)²) over d ∈ [0, L], R = (L² + h²)/(2h).
+  const rampArea = (L: number, h: number) => {
+    const R = (L * L + h * h) / (2 * h);
+    return R * L - (L * Math.sqrt(R * R - L * L) + R * R * Math.asin(L / R)) / 2;
   };
+  const rampAt = (L: number, h: number, d: number) => {
+    const R = (L * L + h * h) / (2 * h);
+    return d >= L ? 0 : R - Math.sqrt(R * R - (L - d) ** 2);
+  };
+  const coveEdge = (r: number) => (1 - Math.PI / 4) * r * r; // cross-section of one coved edge
+  // All four walls: a coved edge along every wall, minus the four corners where two edges overlap
+  // (∫∫ min(arc(dx), arc(dy)) over the r × r corner = r³·(5/3 − π/2)).
+  const coveAll = (w: number, d: number, r: number) => coveEdge(r) * 2 * (w + d) - 4 * r ** 3 * (5 / 3 - Math.PI / 2);
+  const top = FLOOR + 20;
+  // Highest material in a 0.2 × 0.2 column around (x, y): on a slope that is the floor 0.1 mm nearer the wall.
+  const floorAt = (s: ReturnType<typeof itemTray.build>, x: number, y: number) =>
+    k.bounds(k.intersection([s, k.box(0.2, 0.2, top - 1, [x - 0.1, y - 0.1, 0])])).max[2];
 
-  it('scoop floor: a shallow trough adds the raised material beside the arc in every cell', () => {
-    expect(segment(30, 3).R).toBeCloseTo(39, 9); // default 40 × 30 cell, long walls, rise 3
+  it('cove floor: adds the rounded-edge material in every cell (all, long, short walls)', () => {
+    expect(rampArea(8, 8)).toBeCloseTo(coveEdge(8), 9); // a cove is a quarter-circle ramp
     for (const [columns, rows] of [[1, 1], [2, 1], [3, 2]]) {
       const flat = k.volume(itemTray.build(item(itemTray, { columns, rows }), k));
-      for (const scoopSides of ['long', 'short']) {
-        for (const scoopRise of [3, 8]) {
-          const it = item(itemTray, { columns, rows, floorShape: 'scoop', scoopSides, scoopRise });
+      for (const coveRadius of [3, 8, 14.5]) {
+        for (const coveSides of ['all', 'long', 'short']) {
+          const it = item(itemTray, { columns, rows, floorShape: 'cove', coveSides, coveRadius });
           const s = expectFootprintMatchesSolid(itemTray, it);
-          // long: scoop walls run along X (40), span 30; short: along Y (30), span 40.
-          const [along, span] = scoopSides === 'long' ? [40, 30] : [30, 40];
-          const expected = columns * rows * segment(span, scoopRise).raised * along;
+          // long: the walls along X (40 long, 2 of them); short: along Y (30).
+          const perCell = coveSides === 'all' ? coveAll(40, 30, coveRadius) : 2 * coveEdge(coveRadius) * (coveSides === 'long' ? 40 : 30);
+          const expected = columns * rows * perCell;
           expect(Math.abs(k.volume(s) - flat - expected) / expected).toBeLessThan(0.01);
           expect(itemTray.validate!(it)).toEqual([]);
         }
@@ -80,32 +93,72 @@ describe('item-tray', () => {
     }
   });
 
-  it('scoop floor: lowest at the cell centre, floorZ + rise at the scoop walls', () => {
-    const top = FLOOR + 20;
-    const floorAt = (s: ReturnType<typeof itemTray.build>, x: number, y: number) =>
-      k.bounds(k.intersection([s, k.box(0.2, 0.2, top - 1, [x - 0.1, y - 0.1, 0])])).max[2];
-    for (const scoopSides of ['long', 'short']) {
-      const s = itemTray.build(item(itemTray, { columns: 2, rows: 2, floorShape: 'scoop', scoopSides, scoopRise: 3 }), k);
+  it('cove floor: the curve meets the floor r from the walls and the walls at floorZ + r', () => {
+    const s = itemTray.build(item(itemTray, { columns: 2, rows: 2, floorShape: 'cove', coveRadius: 8 }), k);
+    for (const [cx, cy] of [[WALL, WALL], [WALL + 41.2, WALL + 31.2]]) {
+      expect(floorAt(s, cx + 20, cy + 15)).toBeCloseTo(FLOOR, 1);
+      expect(floorAt(s, cx + 8.2, cy + 15)).toBeCloseTo(FLOOR, 1);
+      for (const [x, y] of [[cx + 20, cy + 2], [cx + 2, cy + 15], [cx + 38, cy + 15], [cx + 20, cy + 28]]) {
+        expect(Math.abs(floorAt(s, x, y) - (FLOOR + rampAt(8, 8, 1.9)))).toBeLessThan(0.05);
+      }
+      // Corner: the higher of the two coves (2.9 mm from both walls at the probe's corner); no ledge at r.
+      expect(Math.abs(floorAt(s, cx + 3, cy + 3) - (FLOOR + rampAt(8, 8, 2.9)))).toBeLessThan(0.05);
+      expect(Math.abs(floorAt(s, cx + 3, cy + 1) - (FLOOR + rampAt(8, 8, 0.9)))).toBeLessThan(0.05);
+      expect(floorAt(s, cx + 1, cy + 1)).toBeLessThan(FLOOR + 8 - 0.5);
+    }
+    // long only: the left / right walls (along Y) stay square.
+    const long = itemTray.build(item(itemTray, { floorShape: 'cove', coveSides: 'long', coveRadius: 8 }), k);
+    expect(floorAt(long, WALL + 0.15, WALL + 15)).toBeCloseTo(FLOOR, 1);
+    expect(floorAt(long, WALL + 20, WALL + 2)).toBeGreaterThan(FLOOR + 1);
+  });
+
+  it('ramp floor: one wall or two opposite walls, raised material in every cell', () => {
+    for (const [columns, rows] of [[1, 1], [2, 1], [3, 2]]) {
+      const flat = k.volume(itemTray.build(item(itemTray, { columns, rows }), k));
+      for (const rampWall of ['front', 'back', 'left', 'right', 'front-back', 'left-right']) {
+        for (const [rampLength, rampHeight] of [[0, 0], [12, 6], [15, 15]]) {
+          const it = item(itemTray, { columns, rows, floorShape: 'ramp', rampWall, rampLength, rampHeight });
+          const s = expectFootprintMatchesSolid(itemTray, it);
+          const alongX = rampWall === 'front' || rampWall === 'back' || rampWall === 'front-back';
+          const [along, span] = alongX ? [40, 30] : [30, 40];
+          const sides = rampWall.includes('-') ? 2 : 1;
+          const L = rampLength || (sides === 2 ? 0.4 : 0.5) * span;
+          const h = rampHeight || Math.min(15, L);
+          const expected = columns * rows * sides * rampArea(L, h) * along;
+          expect(Math.abs(k.volume(s) - flat - expected) / expected).toBeLessThan(0.01);
+          expect(itemTray.validate!(it)).toEqual([]);
+        }
+      }
+    }
+  });
+
+  it('ramp floor: floorZ + height at the ramp wall, flat beyond the ramp length and at the other walls', () => {
+    const L = 15;
+    const h = 8;
+    for (const rampWall of ['front', 'right', 'left-right']) {
+      const s = itemTray.build(item(itemTray, { columns: 2, rows: 2, floorShape: 'ramp', rampWall, rampLength: L, rampHeight: h }), k);
       for (const [cx, cy] of [[WALL, WALL], [WALL + 41.2, WALL + 31.2]]) {
-        expect(floorAt(s, cx + 20, cy + 15)).toBeCloseTo(FLOOR, 1);
-        // Just inside the scoop walls (0.15 mm in) and just inside the other two walls.
-        const [atWall, atOther] = scoopSides === 'long'
-          ? [floorAt(s, cx + 20, cy + 0.15), floorAt(s, cx + 0.15, cy + 15)]
-          : [floorAt(s, cx + 0.15, cy + 15), floorAt(s, cx + 20, cy + 0.15)];
-        expect(Math.abs(atWall - (FLOOR + 3))).toBeLessThan(0.1);
-        expect(atOther).toBeCloseTo(FLOOR, 1);
+        const near = FLOOR + rampAt(L, h, 0.05);
+        expect(near).toBeGreaterThan(FLOOR + h - 0.3);
+        if (rampWall === 'front') {
+          expect(Math.abs(floorAt(s, cx + 20, cy + 0.15) - near)).toBeLessThan(0.1);
+          expect(floorAt(s, cx + 20, cy + 29.85)).toBeCloseTo(FLOOR, 1); // back wall: flat
+          expect(floorAt(s, cx + 20, cy + L + 0.2)).toBeCloseTo(FLOOR, 1);
+          expect(Math.abs(floorAt(s, cx + 20, cy + 5) - (FLOOR + rampAt(L, h, 4.9)))).toBeLessThan(0.05);
+        } else {
+          expect(Math.abs(floorAt(s, cx + 39.85, cy + 15) - near)).toBeLessThan(0.1);
+          const left = floorAt(s, cx + 0.15, cy + 15);
+          if (rampWall === 'right') expect(left).toBeCloseTo(FLOOR, 1);
+          else expect(Math.abs(left - near)).toBeLessThan(0.1);
+          expect(floorAt(s, cx + 20, cy + 15)).toBeCloseTo(FLOOR, 1);
+        }
       }
     }
   });
 
   it('dividers are always full height; dividerHeight is not a param and is ignored', () => {
     expect(itemTray.params.map((p) => p.key)).not.toContain('dividerHeight');
-    expect(itemTray.params.map((p) => p.key)).not.toContain('scoopRadius');
-    const rise = itemTray.params.find((p) => p.key === 'scoopRise')!;
-    expect(rise).toMatchObject({ label: 'Rise at the walls', default: 3, min: 0.2, step: 0.5, unit: 'mm', group: 'Floor' });
-    expect(rise.visibleIf!({ floorShape: 'scoop' })).toBe(true);
-    expect(rise.visibleIf!({ floorShape: 'flat' })).toBe(false);
-    for (const floorShape of ['flat', 'scoop']) {
+    for (const floorShape of ['flat', 'cove', 'ramp']) {
       const full = k.volume(itemTray.build(item(itemTray, { columns: 3, rows: 2, floorShape }), k));
       const old = item(itemTray, { columns: 3, rows: 2, floorShape, dividerHeight: 8 });
       expect(k.volume(expectFootprintMatchesSolid(itemTray, old))).toBeCloseTo(full, 6);
@@ -121,7 +174,7 @@ describe('item-tray', () => {
 
   it('stacking variants build and validate', () => {
     for (const st of stackVariants) {
-      for (const floorShape of ['flat', 'scoop']) {
+      for (const floorShape of ['flat', 'cove', 'ramp']) {
         const it = item(itemTray, { columns: 2, rows: 2, floorShape, ...st });
         expectFootprintMatchesSolid(itemTray, it);
         expect(itemTray.validate!(it)).toEqual([]);
@@ -136,13 +189,51 @@ describe('item-tray', () => {
     expect(itemTray.validate!(item(itemTray, { rows: 2.5 })).join()).toMatch(/Rows must be a whole number/);
     expect(itemTray.validate!(item(itemTray, { columns: 2, dividerThickness: 0 })).join()).toMatch(/Divider thickness/);
     expect(itemTray.validate!(item(itemTray, { innerWidth: 0 })).join()).toMatch(/Cell width/);
-    expect(itemTray.validate!(item(itemTray, { floorShape: 'scoop', scoopRise: 0 }))).toEqual(['Rise at the walls must be greater than 0 (is 0).']);
-    expect(itemTray.validate!(item(itemTray, { floorShape: 'scoop', scoopRise: -1 })).join()).toMatch(/Rise at the walls must be greater than 0/);
-    expect(itemTray.validate!(item(itemTray, { floorShape: 'scoop', scoopRise: 20 }))).toEqual([
-      'Rise at the walls (20 mm) must be less than the inner height (20 mm).',
+    const v = (params: ItemParams) => itemTray.validate!(item(itemTray, params));
+    // Cove: radius below half the span across the coved walls, at most the inner height.
+    expect(v({ floorShape: 'cove', coveRadius: 0 })).toEqual(['Cove radius must be greater than 0 (is 0).']);
+    expect(v({ floorShape: 'cove', coveRadius: 15 })).toEqual(['Cove radius (15 mm) must be less than half the cell depth (15 mm).']);
+    expect(v({ floorShape: 'cove', coveRadius: 14.5 })).toEqual([]);
+    expect(v({ floorShape: 'cove', coveSides: 'short', coveRadius: 18 })).toEqual([]);
+    expect(v({ floorShape: 'cove', coveSides: 'short', coveRadius: 20 })).toEqual(['Cove radius (20 mm) must be less than half the cell width (20 mm).']);
+    expect(v({ floorShape: 'cove', coveSides: 'short', coveRadius: 18, innerHeight: 10 })).toEqual([
+      'Cove radius (18 mm) must not be more than the inner height (10 mm).',
     ]);
-    expect(itemTray.validate!(item(itemTray, { floorShape: 'scoop', scoopRise: 19.5 }))).toEqual([]);
-    expect(itemTray.validate!(item(itemTray, { floorShape: 'flat', scoopRise: 50 }))).toEqual([]);
+    expect(v({ floorShape: 'cove', coveRadius: 10, innerHeight: 10 })).toEqual([]);
+    expect(v({ floorShape: 'flat', coveRadius: 50, rampHeight: 50 })).toEqual([]);
+    // Ramp: length within the span (half of it with two walls), height ≤ inner height and ≤ length.
+    expect(v({ floorShape: 'ramp', rampLength: -1 })).toEqual(['Ramp length must not be negative (is -1).']);
+    expect(v({ floorShape: 'ramp', rampHeight: -2 })).toEqual(['Ramp height must not be negative (is -2).']);
+    expect(v({ floorShape: 'ramp', rampLength: 30, rampHeight: 20 })).toEqual([]);
+    expect(v({ floorShape: 'ramp', rampLength: 31 })).toEqual(['Ramp length (31 mm) must not be more than the cell depth (30 mm).']);
+    expect(v({ floorShape: 'ramp', rampWall: 'left-right', rampLength: 21 })).toEqual([
+      'Ramp length (21 mm) must not be more than half the cell width (20 mm) with ramps on two walls.',
+    ]);
+    expect(v({ floorShape: 'ramp', rampWall: 'right', rampLength: 30, rampHeight: 21 })).toEqual([
+      'Ramp height (21 mm) must not be more than the inner height (20 mm).',
+    ]);
+    expect(v({ floorShape: 'ramp', rampWall: 'front-back', rampHeight: 13 })).toEqual([
+      'Ramp height (13 mm) must not be more than the ramp length (12 mm): a curve that starts flat on the floor cannot climb higher than it runs without leaning over.',
+    ]);
+    // Automatic values always validate: front-back of the default cell → length 12, height min(15, 12).
+    for (const rampWall of ['front', 'back', 'left', 'right', 'front-back', 'left-right']) expect(v({ floorShape: 'ramp', rampWall })).toEqual([]);
+  });
+
+  it('floor params: shown only for their floor shape', () => {
+    const spec = (key: string) => itemTray.params.find((p) => p.key === key)!;
+    expect(itemTray.params.map((p) => p.key)).not.toContain('scoopRise');
+    expect(spec('floorShape')).toMatchObject({ default: 'flat', group: 'Floor' });
+    expect(spec('coveRadius')).toMatchObject({ label: 'Cove radius', default: 8, min: 1, unit: 'mm', group: 'Floor' });
+    expect(spec('coveSides')).toMatchObject({ default: 'all' });
+    expect(spec('rampWall')).toMatchObject({ default: 'front' });
+    for (const key of ['coveSides', 'coveRadius']) {
+      expect(spec(key).visibleIf!({ floorShape: 'cove' })).toBe(true);
+      expect(spec(key).visibleIf!({ floorShape: 'ramp' })).toBe(false);
+    }
+    for (const key of ['rampWall', 'rampLength', 'rampHeight']) {
+      expect(spec(key).visibleIf!({ floorShape: 'ramp' })).toBe(true);
+      expect(spec(key).visibleIf!({ floorShape: 'flat' })).toBe(false);
+    }
   });
 });
 

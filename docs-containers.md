@@ -20,7 +20,7 @@ themselves: that is the framework's job, so repeating is never hard‑coded.
 | `card-tray-flat`    | card stack lying flat, finger gaps into a raised floor | columns (X) |
 | `card-tray-upright` | card stack standing, wedges in the long outer walls | columns (X) |
 | `card-tray-tilted`  | standing stack leaning back, open front (dispenser) | columns (X), stepped |
-| `item-tray`         | small token tray, flat or scoop floor            | columns × rows |
+| `item-tray`         | small token tray, flat, cove or ramp floor       | columns × rows |
 
 Local frame as everywhere: X = width, Y = depth, Z = up, origin = outer
 front‑left‑bottom corner, floor on Z = 0 (Z = plug height with a plug).
@@ -345,18 +345,40 @@ the back, the front deck is drawn from the front (+X). Params in group
 Cell: `innerWidth` 40 x `innerDepth` 30 x `innerHeight` 20 (group "Size"),
 repeats along X and Y (`tilingParams('xy')`). Dividers are always full height
 (no `dividerHeight`; an old file's value is ignored). `floorShape` (group
-"Floor"): `flat` (default) or `scoop`. **Scoop**: a shallow trough between two
-opposite walls chosen by `scoopSides`: `long` (default; the two walls along the
-longer inner side) or `short`. Across the span w between those walls the floor
-is one circular segment (axis parallel to the scoop walls, centred across the
-cell), at `floorZ` in the middle and rising `scoopRise` h (default 3 mm, min
-0.2, validated 0 < h < innerHeight) at the walls, radius
-R = (w²/4 + h²) / (2h) (39 mm for the default 40 x 30 cell). Small items slide
-to the middle. The raised material belongs to the floor: the outer height is
-unchanged and the usable depth at the scoop walls is innerHeight − h. Cell
-cutter = an extruded profile (the arc sampled every <= 0.5 mm, then straight up
-through the lip), equivalent to cavity box from `floorZ + h` ∪ (cylinder ∩
-cavity box). Every cell gets its own trough. No finger notches.
+"Floor"): `flat` (default), `cove` or `ramp`; the other Floor params show only
+for their shape (`visibleIf`). The raised material belongs to the floor: the
+outer height is unchanged. Every cell gets its own cove / ramp. No finger
+notches: the curved floor is the access feature.
+
+**Cove**: a concave quarter circle of radius `coveRadius` r (default 8 mm, min
+1) where the floor meets the walls, tangent to both. `coveSides`: `all`
+(default), `long` (the two walls along the longer inner side) or `short`.
+Validated r < half the span across the coved walls (`all`: half the smaller of
+cell width / depth) and r <= innerHeight. Cell cutter for one pair = an
+extruded profile (quarter arcs sampled every <= 0.5 mm, at least 16 per arc,
+then straight up through the lip). For `all` the cutter is the **intersection**
+of the X-pair and Y-pair profiles: along every wall the cove is exact, and the
+walls keep their square vertical corners, so in each corner the two coves meet
+like a groin vault (floor = the higher of the two arcs, a shallow valley along
+the diagonal from the corner at height r down to (r, r)). A ball in the corner
+was tried and rejected: with square vertical corners it leaves a flat shelf at
+height r (it only blends with rounded vertical corners). Raised volume per cell:
+(1 − π/4)·r²·2(w + d) − 4·r³·(5/3 − π/2).
+
+**Ramp**: one large concave curve from the floor up one wall, or up two
+opposite walls, so bits can be swept up and out. `rampWall` (one select):
+`front` (−Y, default: you slide bits toward yourself and lift them over the
+near wall), `back` (+Y), `left` (−X), `right` (+X), `front-back`,
+`left-right`. Profile across the span w between those walls: a circular arc
+tangent to the floor at distance `rampLength` L from the wall, reaching
+`rampHeight` h at the wall, R = (L² + h²) / (2h); flat floor between. Both are
+"0 = automatic" (default): L = w/2 for one wall, 0.4·w for two; h = ¾·innerHeight,
+at most L. Validated L <= w (one wall), 2L <= w (two walls), h <= innerHeight
+and h <= L (with h > L a tangent arc would have to lean over the wall; h = L is
+a quarter circle, vertical at the wall). Cell cutter = the extruded profile, as
+for the cove pairs.
+
+Every cell has the same cutter: it is built once per build and translated.
 
 ## Conventions
 
@@ -367,7 +389,7 @@ cavity box). Every cell gets its own trough. No finger notches.
 * Tests per type in `src/boxes/boxes.test.ts` style (valid manifold, bounds =
   footprint, draw inside footprint, default params validate clean) plus
   type‑specific checks (cell count ↔ volume, gap goes into the floor, wedge
-  removes material, tilted slot bounds, trough adds the raised volume, tiled
+  removes material, tilted slot bounds, cove / ramp add the raised volume, tiled
   footprint arithmetic, divider rects). `tiling.test.ts` for the framework.
 * Register in `src/boxes/index.ts`; palette order: item‑tray,
   card‑tray‑flat, card‑tray‑upright, card‑tray‑tilted, spacer, platform.
@@ -384,11 +406,20 @@ cavity box). Every cell gets its own trough. No finger notches.
   sample project were migrated with the same function and report exactly as
   before.
 
+* **Item tray finger access: cove and ramp** (2026-11-07). The scoop floor
+  (shallow trough, `scoopSides` / `scoopRise`) is removed. `floorShape` is
+  `flat` | `cove` | `ramp` (see section 4). On load a `scoop` tray becomes a
+  `cove` on the same walls (`coveSides` = old `scoopSides`, default long) with
+  `coveRadius` 8, reduced to the largest half millimetre that fits a small cell
+  (below half the span, within the inner height); `scoopSides` / `scoopRise`
+  are dropped (`migrateItemTray` in services/persistence). The containers demo
+  shows a cove tray (all walls) and two ramp trays (front; left and right).
+
 ## Open points for the user
 
 * **Repeat axis per type.** All three card trays now repeat along X; the
   tilted tray as stepped slots one behind the other (built 2026-11-06, replacing
   the lanes along Y; its dividers are always full height and the part grows
   at the back so the leaning cards stay inside the footprint).
-* **Scoop next to a lowered divider** can stand higher than the divider; there
-  is no warning yet.
+* ~~Scoop next to a lowered divider~~: moot, the item tray's dividers are
+  always full height (and the scoop is gone, see Decided).

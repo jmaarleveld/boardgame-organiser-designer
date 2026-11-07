@@ -72,6 +72,11 @@ function clean(v: number): number {
  * - `card-tray-upright` with the earlier wedge params (2026-11-06): `wedges`
  *   and the `wedgeWalls` select become the two toggles `wedgeEnds` /
  *   `wedgeLong`. See `migrateUprightTray`.
+ * - `item-tray` with the scoop floor (removed 2026-11-07): `floorShape:
+ *   'scoop'` becomes `cove` on the same walls (`coveSides` = the old
+ *   `scoopSides`, default long) with the default cove radius (8 mm, reduced to
+ *   fit a small cell); `scoopSides` / `scoopRise` are dropped. See
+ *   `migrateItemTray`.
  *
  * Every other item is returned unchanged.
  */
@@ -125,6 +130,8 @@ export function migrateLegacyItem(item: PlacedItem): PlacedItem {
       return migrateTiltedTray(item);
     case 'card-tray-upright':
       return migrateUprightTray(item);
+    case 'item-tray':
+      return migrateItemTray(item);
     default:
       return item;
   }
@@ -174,6 +181,37 @@ function migrateUprightTray(item: PlacedItem): PlacedItem {
   } else if (walls === 'ends' || walls === 'long' || walls === 'both') {
     out.wedgeEnds = walls !== 'long';
     out.wedgeLong = walls !== 'ends';
+  }
+  return { ...item, params: out };
+}
+
+/** Default cove radius of the item tray (mm), see src/boxes/definitions/item-tray.ts. */
+const COVE_RADIUS = 8;
+
+/**
+ * An item tray saved with the scoop floor (`floorShape: 'scoop'`, `scoopSides`
+ * long | short, `scoopRise`): becomes a cove on the same pair of walls with
+ * the default radius, or, when the cell is too small for it, the largest
+ * half-millimetre radius below half the span across those walls and within
+ * the inner height. Old scoop keys on a non-scoop tray are just dropped.
+ * Returns the item itself when there is nothing to migrate.
+ */
+function migrateItemTray(item: PlacedItem): PlacedItem {
+  const params = item.params;
+  if (params.floorShape !== 'scoop' && !('scoopSides' in params) && !('scoopRise' in params)) return item;
+  const out = without(params, ['scoopSides', 'scoopRise']);
+  if (params.floorShape === 'scoop') {
+    const sides = params.scoopSides === 'short' ? 'short' : 'long';
+    const w = numParam(params, 'innerWidth', 40);
+    const d = numParam(params, 'innerDepth', 30);
+    const h = numParam(params, 'innerHeight', 20);
+    const longAlongX = w >= d;
+    const span = (sides === 'long') === longAlongX ? d : w;
+    let r = COVE_RADIUS;
+    if (r >= span / 2 || r > h) r = Math.max(1, Math.min(Math.ceil(span) / 2 - 0.5, Math.floor(2 * h) / 2));
+    out.floorShape = 'cove';
+    out.coveSides = sides;
+    out.coveRadius = r;
   }
   return { ...item, params: out };
 }

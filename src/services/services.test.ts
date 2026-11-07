@@ -4,9 +4,9 @@ import { parseXml } from './xml';
 import { createBggClient, parseSearch, parseVersions } from './bgg';
 import { createPersistence, migrateLegacyItem, validateProject } from './persistence';
 import { registerAllBoxTypes } from '../boxes/index';
-import { placedFootprint } from '../model/resolve';
+import { placedFootprint, resolveItem } from '../model/resolve';
 import { createExporter, explainBuildError } from './exporter';
-import { clearRegistry, registerBoxType } from '../boxes/registry';
+import { clearRegistry, getBoxType, registerBoxType } from '../boxes/registry';
 import { createEmptyProject, type PlacedItem, type Project } from '../model/types';
 import type { GeometryKernel } from '../geometry/types';
 
@@ -211,6 +211,33 @@ describe('persistence', () => {
     // Through validateProject (the load path) too.
     const proj = { version: 1, settings: createEmptyProject().settings, items: [upright({ wedgeWalls: 'long', exposedHeight: 15 })] };
     expect(validateProject(proj).items[0].params).toEqual({ wedgeLong: true, wedgeEnds: false, exposedHeight: 15 });
+  });
+
+  it('migrates the item tray scoop floor to a cove on the same walls', () => {
+    const tray = (params: PlacedItem['params']): PlacedItem => ({ id: 'i', type: 'item-tray', label: 'i', x: 0, y: 0, rotation: 0, params });
+    const m = (params: PlacedItem['params']) => migrateLegacyItem(tray(params)).params;
+    expect(m({ floorShape: 'scoop', scoopSides: 'short', scoopRise: 3, columns: 2 })).toEqual({
+      floorShape: 'cove', coveSides: 'short', coveRadius: 8, columns: 2,
+    });
+    // No scoopSides: the old default (long walls).
+    expect(m({ floorShape: 'scoop' })).toEqual({ floorShape: 'cove', coveSides: 'long', coveRadius: 8 });
+    expect(m({ floorShape: 'scoop', scoopSides: 'bogus', scoopRise: 5 })).toEqual({ floorShape: 'cove', coveSides: 'long', coveRadius: 8 });
+    // A cell too small for 8 mm: the largest half-millimetre radius below half the span and within the height.
+    expect(m({ floorShape: 'scoop', innerWidth: 20, innerDepth: 15, innerHeight: 30 })).toMatchObject({ coveRadius: 7 }); // span 15 (long walls)
+    expect(m({ floorShape: 'scoop', scoopSides: 'short', innerWidth: 14, innerDepth: 12 })).toMatchObject({ coveRadius: 6.5 }); // span 14
+    expect(m({ floorShape: 'scoop', innerHeight: 5.2 })).toMatchObject({ coveRadius: 5 });
+    // Leftover scoop keys on another floor are dropped.
+    expect(m({ floorShape: 'flat', scoopRise: 3, scoopSides: 'long' })).toEqual({ floorShape: 'flat' });
+    const clean = tray({ floorShape: 'cove', coveSides: 'all' });
+    expect(migrateLegacyItem(clean)).toBe(clean);
+    // Through validateProject (the load path), and the result validates clean.
+    const proj = { version: 1, settings: createEmptyProject().settings, items: [tray({ floorShape: 'scoop', scoopSides: 'long', scoopRise: 3 })] };
+    const loaded = validateProject(proj).items[0];
+    expect(loaded.params).toEqual({ floorShape: 'cove', coveSides: 'long', coveRadius: 8 });
+    clearRegistry();
+    registerAllBoxTypes();
+    const def = getBoxType('item-tray');
+    expect(def.validate!(resolveItem(loaded, proj.settings, [loaded]))).toEqual([]);
   });
 });
 

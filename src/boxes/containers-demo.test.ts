@@ -21,7 +21,10 @@ describe('examples/containers-demo.json', () => {
     expect(new Set(project.items.map((i) => i.type))).toEqual(
       new Set(['item-tray', 'card-tray-flat', 'card-tray-upright', 'card-tray-tilted']),
     );
-    expect(project.items).toHaveLength(5);
+    expect(project.items).toHaveLength(7);
+    // The item trays show the three floors: flat, cove, ramp (one wall and two walls).
+    const floors = project.items.filter((i) => i.type === 'item-tray').map((i) => i.params.floorShape);
+    expect(floors).toEqual(['flat', 'cove', 'ramp', 'ramp']);
   });
 
   it('the tilted dispenser has 3 stepped slots along X', () => {
