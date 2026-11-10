@@ -330,7 +330,17 @@ printed part with shared inner walls. Box types never loop over cells.
   type then validates its divider thickness itself).
 
 Outer size: W = 2·wall + (cols − 1)·pitchX + cell.width, D likewise, H =
-`stackedHeight(cell.height, floor, stacking)`. Cell (col, row) has its inner
+`stackedHeight(cell.height, floor, stacking)` + `extraHeight`.
+
+**Extra wall height** (`TiledBoxSpec.extraHeight`, param `extraHeight`, group
+"Height", on the three card trays; the item tray grows `innerHeight`
+instead): the finished part is stretched with `kernel.stretchZ` at
+`stretchZ` = `STRETCH_BELOW_TOP` (0.2 mm) under the wall top, or half way
+down to the highest horizontal face below it (floor, lowered divider tops,
+`stretchKeepBelow`, e.g. the tilted tray's front opening bottom). Everything
+cut through that plane (cavities, gaps, wedges, the opening) continues
+straight up; the cell callbacks never see it. Bearing areas above the plane
+rise by it (`stretchedAreas`); the card trays' keep‑out shrinks by it. Cell (col, row) has its inner
 origin at `(wall + col·pitchX, wall + row·pitchY, plug + floor)`.
 
 **Framework functions.** `tiledLayout` derives the numbers above (counts
@@ -396,11 +406,41 @@ at every slot; sizes as in the upright tray, the auto depth clamped to
 H − T·sin θ − 1.
 See `docs-containers.md`.
 
+### 4.5 Finishing actions (`src/model/finish.ts`, `src/ui/FinishPanel.tsx`)
+
+One‑off edits of the current layout (left column, "Finishing"); each is one
+undo step and rewrites item params, so they must be run again after the
+layout changes. They go through three optional `BoxTypeDefinition` hooks that
+return an `ItemEdit` (`params` merged over the item's, optional absolute
+`floor` override):
+
+* `flatBase(item)`: remove the base's stacking features. Cavity types drop
+  the recess / plug (`stackBottom: none`), the platform its corner stops.
+  **Flat bases on the floor** (`flatBasesOnFloor`) applies it to every item
+  with `z = 0`.
+* `flatTop(item)`: remove what sticks up from the top (cavity types: the lip).
+* `raise(item, by, { mode, headroom })`: make the item `by` mm taller, same
+  width / depth / base. Item tray: `innerHeight`; flat card tray: extra wall
+  height; upright / tilted card trays: in mode `type` the floor override goes
+  up by min(by, headroom) (`headroom` = target − highest point incl. the
+  standing cards, so the cards end at most at the target and stick out as much
+  as before), the rest is extra wall height; in mode `walls` all of it is extra
+  wall height. Spacer: `height`; platform: `thickness`.
+
+**Flatten top** (`flattenTop(items, settings, height, mode)`) needs `height` ≥
+the highest `effectiveTop` of all items (else nothing changes and the problem
+names that item). For every stack top (`stackTopIds`: no later item overlaps
+it in XY, so by gravity nothing rests on it) it applies `flatTop`, then
+`raise` by `height − top`, and reports items that cannot be raised or do not
+end at the height (±0.01 mm). Lower items are left alone.
+
 ## 5. Geometry kernel (`src/geometry/kernel.ts`)
 
 A thin, testable wrapper over manifold‑3d, exposing an opaque `Solid` type and
 corner‑origin primitives (`box`, `cylinder`, `extrude`), booleans (`union`,
-`difference`), transforms, `volume`, `bounds`, `toMesh` (for three.js) and
+`difference`), transforms, `stretchZ` (split at a plane, move the top up,
+fill with the extruded cross section; OpenSCAD: `projection(cut=true)` +
+`linear_extrude`), `volume`, `bounds`, `toMesh` (for three.js) and
 `toSTL` (binary STL `ArrayBuffer`). `createKernel()` loads the WASM module once
 and is awaited at app start. The kernel is the only module that imports
 `manifold-3d`.

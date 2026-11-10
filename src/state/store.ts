@@ -6,7 +6,8 @@ import { create } from 'zustand';
 import type { ParamValue, PlacedItem, Project, ProjectSettings } from '../model/types';
 import { createEmptyProject } from '../model/types';
 import { getBoxType } from '../boxes/registry';
-import { newItemParams } from '../boxes/types';
+import { newItemParams, type RaiseMode } from '../boxes/types';
+import { flatBasesOnFloor, flattenTop, type FinishResult } from '../model/finish';
 import type { Rect } from '../model/layout';
 import { carriedItemIds, elevationOf, rectInside, rectsOverlap, safeItemRect, settle, stackedAboveIds, usableArea } from '../model/layout';
 
@@ -74,6 +75,10 @@ export interface AppState {
    * after the source in the stack order, so it rests on it. Returns the new id.
    */
   duplicateItemStacked(id: string): string | null;
+  /** Remove the base stacking features of every item on the game box floor (one undo step). */
+  flatBasesOnFloor(): FinishResult;
+  /** Raise every stack top to `height` and remove its lip (one undo step); see `flattenTop`. */
+  flattenTop(height: number, mode: RaiseMode): FinishResult;
   select(id: string | null): void;
   loadProject(project: Project): void;
   newProject(): void;
@@ -409,6 +414,20 @@ export const useStore = create<AppState>()((set, get) => {
       });
       set({ selectedId: copy.id });
       return copy.id;
+    },
+
+    flatBasesOnFloor: () => {
+      const { project } = get();
+      const result = flatBasesOnFloor(project.items, project.settings);
+      if (result.changedIds.length) commit((p) => withItems(p, result.items));
+      return result;
+    },
+
+    flattenTop: (height, mode) => {
+      const { project } = get();
+      const result = flattenTop(project.items, project.settings, height, mode);
+      if (result.changedIds.length) commit((p) => withItems(p, result.items));
+      return result;
     },
 
     select: (id) => set({ selectedId: id }),

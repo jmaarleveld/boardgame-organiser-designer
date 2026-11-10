@@ -1,6 +1,6 @@
 import type { BoxTypeDefinition, TopViewFeature } from '../types';
 import type { ResolvedItem } from '../../model/types';
-import { bool, EPS, num, requirePositive, round } from './common';
+import { bool, EPS, num, requirePositive, round, roundEdit } from './common';
 
 /**
  * Flat plate that bridges several trays and carries the next level.
@@ -233,6 +233,11 @@ export const platform: BoxTypeDefinition = {
     if (!(g.sh > 0) || !(g.stopSize > 0)) return [];
     return stopCorners(g).map(([x, y]) => ({ kind: 'protrusion' as const, x, y, width: g.stopSize, depth: g.stopSize, height: g.sh, name: 'corner stop' }));
   },
+
+  /** On the game box floor the corner stops have nothing to drop into. */
+  flatBase: (item) => (geom(item).sh > 0 ? { params: { cornerStops: false } } : null),
+  /** A thicker plate. (Ridges only exist for items on top, which a raised top item has none of.) */
+  raise: (item, by) => ({ params: { thickness: roundEdit(geom(item).t + by) } }),
 
   describeContext(item) {
     const g = geom(item);

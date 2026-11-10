@@ -91,6 +91,24 @@ export function createScadKernel(): ScadKernel {
     mirror(solid, normal) {
       return node(wrap(`mirror(${vec(normal)})`, nodeOf(solid)));
     },
+    stretchZ(solid, z, by) {
+      requirePositiveDims('stretchZ', { by });
+      requireFiniteOffset('stretchZ', [0, 0, z]);
+      // Below the plane, the cross section at the plane extruded by `by`, and
+      // the part above the plane moved up by `by`. B = a half-space stand-in.
+      const s = nodeOf(solid);
+      const B = 1e4;
+      const below = block('intersection', [s, `translate(${vec([-B, -B, -B])}) cube(${vec([2 * B, 2 * B, B + z])});`]);
+      const above = wrap(
+        `translate(${vec([0, 0, by])})`,
+        block('intersection', [s, `translate(${vec([-B, -B, z])}) cube(${vec([2 * B, 2 * B, B])});`]),
+      );
+      const band = wrap(
+        `translate(${vec([0, 0, z])}) linear_extrude(height=${scadNum(by)}) projection(cut=true) translate(${vec([0, 0, -z])})`,
+        s,
+      );
+      return node(block('union', [below, band, above]));
+    },
 
     volume(): number {
       throw new Error(UNSUPPORTED);

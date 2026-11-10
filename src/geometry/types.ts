@@ -39,6 +39,14 @@ export interface GeometryKernel {
   /** Rotate about the origin by Euler angles in degrees (applied X, then Y, then Z). */
   rotate(solid: Solid, degrees: Vec3): Solid;
   mirror(solid: Solid, normal: Vec3): Solid;
+  /**
+   * Stretch a solid vertically at the plane Z = `z`: everything above moves up
+   * by `by`, and the gap is filled with the cross section at `z` extruded
+   * straight up. Features cut through the plane (cavities, slots, wedges)
+   * continue straight through the inserted band. `by` must be > 0, and `z`
+   * should not coincide with a horizontal face.
+   */
+  stretchZ(solid: Solid, z: number, by: number): Solid;
 
   volume(solid: Solid): number;
   bounds(solid: Solid): Bounds;

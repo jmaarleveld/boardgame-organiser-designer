@@ -4,7 +4,7 @@
  */
 import type { ResolvedItem } from '../../model/types';
 import type { GeometryKernel, Solid } from '../../geometry/types';
-import type { BaseFeature, BearingArea, ParamSpec } from '../types';
+import type { BaseFeature, BearingArea, ItemEdit, ParamSpec } from '../types';
 
 /** Overshoot used to make boolean cuts clean (cutters poke through faces). */
 export const EPS = 0.01;
@@ -191,6 +191,21 @@ export function stackEngagement(item: ResolvedItem, below?: ResolvedItem): numbe
   }
   if (s.bottom === 'plug') return s.plugH;
   return 0;
+}
+
+/** `flatBase` of a stackable cavity box: drop the recess or plug. */
+export function stackingFlatBase(item: ResolvedItem): ItemEdit | null {
+  return stacking(item).bottom === 'none' ? null : { params: { stackBottom: 'none' } };
+}
+
+/** `flatTop` of a stackable cavity box: drop the lip. */
+export function stackingFlatTop(item: ResolvedItem): ItemEdit | null {
+  return stacking(item).top === 'none' ? null : { params: { stackTop: 'none' } };
+}
+
+/** Round a length written by a layout action to 0.001 mm. */
+export function roundEdit(v: number): number {
+  return Math.round(v * 1000) / 1000;
 }
 
 /** Outer height of a stackable cavity box. */

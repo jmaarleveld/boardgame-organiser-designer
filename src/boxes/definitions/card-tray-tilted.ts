@@ -94,6 +94,8 @@ import {
   stackEngagement,
   stacking,
   type Stacking,
+  stackingFlatBase,
+  stackingFlatTop,
   stackingNewItemParams,
   stackingParams,
   validateCards,
@@ -105,6 +107,10 @@ import {
 } from './common';
 import {
   cellFrames,
+  extraHeightOf,
+  extraHeightParam,
+  raiseFloorThenWalls,
+  stretchedAreas,
   tiledBaseFeatures,
   tiledBearingAreas,
   tiledBuild,
@@ -469,6 +475,9 @@ function spec(item: ResolvedItem): TiledBoxSpec {
     floor: item.floor,
     stacking: stacking(item),
     straightDividers: false,
+    extraHeight: extraHeightOf(item),
+    // The bottom of the front access opening must stay where it is.
+    stretchKeepBelow: frontOpen(g) ? [stacking(item).plugH + item.floor + g.frontHeight] : [],
   };
   const L = tiledLayout({ ...base, cellCutters: () => [], cellDraw: () => [] });
   const plates = g.wedgePlates && wedgesSized(g);
@@ -590,7 +599,8 @@ function bearingAreas(item: ResolvedItem): BearingArea[] {
       });
     }
   }
-  return [...areas, ...extra];
+  // `areas` come from the framework, already moved by the extra wall height.
+  return [...areas, ...stretchedAreas(sp, extra)];
 }
 
 /**
@@ -609,7 +619,7 @@ function keepOut(item: ResolvedItem): KeepOut[] {
   if (!(g.H > 0) || !(g.tilt > 0)) return [];
   const sp = spec(item);
   const L = tiledLayout(sp);
-  const height = g.exposed * g.cos + g.cards.stackHeight * g.sin - L.lipH;
+  const height = g.exposed * g.cos + g.cards.stackHeight * g.sin - L.lipH - L.extraH;
   if (!(height > 0)) return [];
   return cellFrames(sp).map((f) => ({
     x: f.x + g.back - g.overhang,
@@ -747,6 +757,7 @@ export const cardTrayTilted: BoxTypeDefinition = {
       visibleIf: wedgesOn,
     },
     ...stackingParams,
+    extraHeightParam,
   ],
   newItemParams: { ...stackingNewItemParams },
 
@@ -798,4 +809,8 @@ export const cardTrayTilted: BoxTypeDefinition = {
   bearingAreas,
   baseFeatures: (item) => tiledBaseFeatures(spec(item)),
   keepOut,
+
+  flatBase: stackingFlatBase,
+  flatTop: stackingFlatTop,
+  raise: raiseFloorThenWalls,
 };

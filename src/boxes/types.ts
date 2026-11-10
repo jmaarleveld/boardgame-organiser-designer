@@ -110,6 +110,32 @@ export interface KeepOut {
   fix?: string;
 }
 
+/**
+ * A one‑off change to an item made by a layout action ("Flat base on the
+ * floor", "Flatten top"): params merged over the item's params, and
+ * optionally a new floor thickness override (absolute, mm).
+ */
+export interface ItemEdit {
+  params?: ItemParams;
+  floor?: number;
+}
+
+/**
+ * How "Flatten top" adds height: 'type' = what suits the type (card trays
+ * with standing cards raise their floor as far as the cards allow), 'walls'
+ * = taller walls everywhere.
+ */
+export type RaiseMode = 'type' | 'walls';
+
+export interface RaiseOptions {
+  mode: RaiseMode;
+  /**
+   * How far the item's highest point (incl. keep‑out space, e.g. standing
+   * cards) may still rise before it passes the target height. ≤ `by`.
+   */
+  headroom: number;
+}
+
 export interface BoxTypeDefinition {
   /** Stable id stored in project files, e.g. "item-tray". */
   id: string;
@@ -182,6 +208,19 @@ export interface BoxTypeDefinition {
    * alters existing geometry. Keys must exist in `params`.
    */
   newItemParams?: ItemParams;
+  /**
+   * Edit that removes the stacking features of the base (recess, plug, corner
+   * stops), for an item standing on the game box floor. null / undefined =
+   * nothing to remove.
+   */
+  flatBase?(item: ResolvedItem): ItemEdit | null;
+  /** Edit that removes what sticks up from the top edge (stacking lip). null / undefined = already flat. */
+  flatTop?(item: ResolvedItem): ItemEdit | null;
+  /**
+   * Edit that makes the item `by` mm (> 0) taller, keeping its width and
+   * depth and its base. Undefined = the type cannot be raised.
+   */
+  raise?(item: ResolvedItem, by: number, opts: RaiseOptions): ItemEdit | null;
 }
 
 /** Stack engagement of an item (on `below`, if given), never negative or NaN. */

@@ -7,6 +7,7 @@ import { nudgeDelta } from './model/drag';
 import { Palette } from './ui/Palette';
 import { OutlinePanel } from './ui/OutlinePanel';
 import { SettingsPanel } from './ui/SettingsPanel';
+import { FinishPanel } from './ui/FinishPanel';
 import { Inspector } from './ui/Inspector';
 import { ValidationPanel } from './ui/ValidationPanel';
 import { StatusBar } from './ui/StatusBar';
@@ -299,6 +300,7 @@ export default function App({ services, onRetryKernel }: AppProps) {
           <SettingsPanel bggSlot={<BggSlot services={services} />} />
           <Palette />
           <OutlinePanel />
+          <FinishPanel />
         </aside>
 
         <main className="centre">

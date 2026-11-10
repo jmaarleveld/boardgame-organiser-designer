@@ -5,8 +5,11 @@ import {
   EPS,
   num,
   requirePositive,
+  roundEdit,
   stackEngagement,
   stacking,
+  stackingFlatBase,
+  stackingFlatTop,
   stackingNewItemParams,
   stackingParams,
   str,
@@ -348,6 +351,11 @@ export const itemTray: BoxTypeDefinition = {
   stackEngagement,
   bearingAreas: (item) => tiledBearingAreas(spec(item)),
   baseFeatures: (item) => tiledBaseFeatures(spec(item)),
+
+  flatBase: stackingFlatBase,
+  flatTop: stackingFlatTop,
+  /** Taller walls in both modes: the cells get deeper. */
+  raise: (item, by) => ({ params: { innerHeight: roundEdit(num(item, 'innerHeight') + by) } }),
 };
 
 /** Slack for comparing derived lengths (float noise only). */

@@ -150,6 +150,25 @@ function makeKernel(wasm: ManifoldToplevel): GeometryKernel {
       return wrap(unwrap(solid).mirror(normal));
     },
 
+    stretchZ(solid, z, by) {
+      requirePositiveDims('stretchZ', { by });
+      requireFiniteOffset('stretchZ', [0, 0, z]);
+      const m = unwrap(solid);
+      const [above, below] = m.splitByPlane([0, 0, 1], z);
+      const section = m.slice(z);
+      const band = section.extrude(by);
+      section.delete();
+      const bandAt = band.translate([0, 0, z]);
+      band.delete();
+      const up = above.translate([0, 0, by]);
+      above.delete();
+      const out = Manifold.union([below, bandAt, up]);
+      below.delete();
+      bandAt.delete();
+      up.delete();
+      return wrap(out);
+    },
+
     volume(solid) {
       return unwrap(solid).volume();
     },

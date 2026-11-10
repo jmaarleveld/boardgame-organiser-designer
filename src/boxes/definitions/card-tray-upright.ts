@@ -11,6 +11,8 @@ import {
   round,
   stackEngagement,
   stacking,
+  stackingFlatBase,
+  stackingFlatTop,
   stackingNewItemParams,
   stackingParams,
   validateCards,
@@ -24,6 +26,9 @@ import {
 import {
   cellFrames,
   dividerHeightParam,
+  extraHeightOf,
+  extraHeightParam,
+  raiseFloorThenWalls,
   tiledBaseFeatures,
   tiledBearingAreas,
   tiledBuild,
@@ -159,6 +164,7 @@ function spec(item: ResolvedItem): TiledBoxSpec {
     floor: item.floor,
     stacking: stacking(item),
     dividerHeight: num(item, 'dividerHeight'),
+    extraHeight: extraHeightOf(item),
     cellCutters(kernel, f) {
       const out: Solid[] = [kernel.box(f.width, f.depth, f.height + f.lipH + EPS, [f.x, f.y, f.floorZ])];
       if (wedges) for (const w of wallCuts(f, g, item.wall)) out.push(wedgeCutter(kernel, w));
@@ -247,6 +253,7 @@ export const cardTrayUpright: BoxTypeDefinition = {
       visibleIf: wedgesOn,
     },
     ...stackingParams,
+    extraHeightParam,
   ],
   newItemParams: { ...stackingNewItemParams },
 
@@ -279,16 +286,21 @@ export const cardTrayUpright: BoxTypeDefinition = {
   bearingAreas: (item) => tiledBearingAreas(spec(item)),
   baseFeatures: (item) => tiledBaseFeatures(spec(item)),
 
+  flatBase: stackingFlatBase,
+  flatTop: stackingFlatTop,
+  raise: raiseFloorThenWalls,
+
   /**
    * The cards stand on the floor and stick out exposedHeight above the wall
-   * top, i.e. exposedHeight − lipH above the outer top: one rect over each
-   * cell's cavity must stay free up to there.
+   * top, i.e. exposedHeight − lipH − extra wall height above the outer top:
+   * one rect over each cell's cavity must stay free up to there.
    */
   keepOut(item) {
     const g = geom(item);
     if (!(g.height > 0)) return [];
     const s = spec(item);
-    const above = g.exposed - tiledLayout(s).lipH;
+    const L = tiledLayout(s);
+    const above = g.exposed - L.lipH - L.extraH;
     if (!(above > 0)) return [];
     return cellFrames(s).map(
       (f): KeepOut => ({ x: f.x, y: f.y, width: f.width, depth: f.depth, height: above, name: 'standing cards', fix: 'lower the exposed height' }),

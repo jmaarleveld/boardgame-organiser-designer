@@ -11,12 +11,17 @@ import {
   round,
   stackEngagement,
   stacking,
+  stackingFlatBase,
+  stackingFlatTop,
   stackingNewItemParams,
   stackingParams,
   str,
   validateCards,
 } from './common';
 import {
+  extraHeightOf,
+  extraHeightParam,
+  raiseWalls,
   tiledBaseFeatures,
   tiledBearingAreas,
   tiledBuild,
@@ -197,6 +202,7 @@ function spec(item: ResolvedItem): TiledBoxSpec {
     wall: item.wall,
     floor: grooveFloorOf(item, g) + raisedBy(g),
     stacking: stacking(item),
+    extraHeight: extraHeightOf(item),
     cellCutters(kernel, f) {
       const out: Solid[] = [kernel.box(f.width, f.depth, f.height + f.lipH + EPS, [f.x, f.y, f.floorZ])];
       if (hasGaps) for (const side of gapSidesOf(f, g.gapSides)) out.push(gapCutter(kernel, f, side, g.gapWidth, g.gapFloorDepth, g.gapReach));
@@ -268,6 +274,7 @@ export const cardTrayFlat: BoxTypeDefinition = {
       group: 'Finger gaps',
     },
     ...stackingParams,
+    extraHeightParam,
   ],
   newItemParams: { ...stackingNewItemParams },
 
@@ -300,4 +307,9 @@ export const cardTrayFlat: BoxTypeDefinition = {
   stackEngagement,
   bearingAreas: (item) => tiledBearingAreas(spec(item)),
   baseFeatures: (item) => tiledBaseFeatures(spec(item)),
+
+  flatBase: stackingFlatBase,
+  flatTop: stackingFlatTop,
+  /** Taller walls in both modes (the finger gaps reach the floor anyway). */
+  raise: (item, by) => raiseWalls(item, by),
 };

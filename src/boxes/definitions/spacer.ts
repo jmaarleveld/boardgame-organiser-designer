@@ -1,6 +1,6 @@
 import type { BoxTypeDefinition } from '../types';
 import type { ResolvedItem } from '../../model/types';
-import { num, requirePositive } from './common';
+import { num, requirePositive, roundEdit } from './common';
 
 function size(item: ResolvedItem) {
   return { w: num(item, 'width'), d: num(item, 'depth'), h: num(item, 'height') };
@@ -37,6 +37,8 @@ export const spacer: BoxTypeDefinition = {
     const s = size(item);
     return [{ x: 0, y: 0, width: s.w, depth: s.d, height: s.h, name: 'top' }];
   },
+
+  raise: (item, by) => ({ params: { height: roundEdit(size(item).h + by) } }),
 
   validate(item) {
     const s = size(item);
